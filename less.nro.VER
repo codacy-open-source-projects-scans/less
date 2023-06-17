@@ -120,7 +120,7 @@ while it is being viewed.
 (The behavior is similar to the "tail \-f" command.)
 To stop waiting for more data, enter the interrupt character (usually \(haC).
 On systems which support
-.BR poll (1)
+.BR poll (2)
 you can also use \(haX or the character specified by the \-\-intr option.
 If the input is a pipe and the \-\-exit-follow-on-close option is in effect,
 .B less
@@ -489,10 +489,10 @@ so it may be necessary to use the R or F command to see more data.
 The \-\-intr option can be used to specify a different character
 to use instead of \(haX.
 This command works only on systems that support the
-.BR poll (1)
+.BR poll (2)
 function.
 On systems without
-.BR poll (1),
+.BR poll (2),
 the interrupt character (usually \(haC) can be used instead.
 .
 .SH OPTIONS
@@ -720,6 +720,11 @@ CHAR_INFO.Attributes values
 .nh
 https://docs.microsoft.com/en-us/windows/console/char-info-str).
 .hy
+.PP
+On MS-DOS only, the \-Da option may be used to specify strict parsing of 
+ANSI color (SGR) sequences when the \-R option is used.
+Without this option, sequences that change text attributes 
+(bold, underline, etc.) may clear the text color.
 .RE
 .IP "\-e or \-\-quit-at-eof"
 Causes

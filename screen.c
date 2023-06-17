@@ -168,8 +168,8 @@ static void win32_deinit_term();
 #define MAKEATTR(fg,bg)         ((WORD)((fg)|((bg)<<4)))
 #define APPLY_COLORS()          { if (SetConsoleTextAttribute(con_out, curr_attr) == 0) \
                                   error("SETCOLORS failed", NULL_PARG); }
-#define SET_FG_COLOR(fg)        { curr_attr |= (fg); APPLY_COLORS(); }
-#define SET_BG_COLOR(bg)        { curr_attr |= ((bg)<<4); APPLY_COLORS(); }
+#define SET_FG_COLOR(fg)        { curr_attr &= ~0x0f; curr_attr |= (fg); APPLY_COLORS(); }
+#define SET_BG_COLOR(bg)        { curr_attr &= ~0xf0; curr_attr |= ((bg)<<4); APPLY_COLORS(); }
 #define SETCOLORS(fg,bg)        { curr_attr = MAKEATTR(fg,bg); APPLY_COLORS(); }
 #endif
 
@@ -2936,9 +2936,9 @@ public char WIN32getch(void)
 		}
 		keyCount --;
 		// If multibyte character, return its first byte
-		if (currentKey.ascii != currentKey.unicode)
+		if (currentKey.unicode > 0x7f)
 		{
-			utf8_size = WideCharToMultiByte(CP_UTF8, 0, &currentKey.unicode, 1, &utf8, sizeof(utf8), NULL, NULL);
+			utf8_size = WideCharToMultiByte(CP_UTF8, 0, &currentKey.unicode, 1, (LPSTR) &utf8, sizeof(utf8), NULL, NULL);
 			if (utf8_size == 0 )
 				return '\0';
 			ascii = utf8[0];
@@ -2955,6 +2955,16 @@ public char WIN32getch(void)
 		(currentKey.scan == PCK_CAPS_LOCK || currentKey.scan == PCK_NUM_LOCK));
 
 	return ascii;
+}
+
+/*
+ * Restore the character read during iread.
+ */
+public void WIN32ungetch(int ch)
+{
+	currentKey.unicode = ch;
+	++keyCount;
+	pending_scancode = 0;
 }
 #endif
 
