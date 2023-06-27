@@ -149,6 +149,8 @@ static WORD curr_attr;
 static int pending_scancode = 0;
 static char x11mousebuf[] = "[M???";    /* Mouse report, after ESC */
 static int x11mousePos, x11mouseCount;
+static int win_unget_pending = FALSE;
+static int win_unget_data;
 
 static HANDLE con_out_save = INVALID_HANDLE_VALUE; /* previous console */
 static HANDLE con_out_ours = INVALID_HANDLE_VALUE; /* our own */
@@ -2799,7 +2801,7 @@ public int win32_kbhit(void)
 	INPUT_RECORD ip;
 	DWORD read;
 
-	if (keyCount > 0)
+	if (keyCount > 0 || win_unget_pending)
 		return (TRUE);
 
 	currentKey.ascii = 0;
@@ -2904,6 +2906,13 @@ public int win32_kbhit(void)
 
 /*
  * Read a character from the keyboard.
+ *
+ * Known issues:
+ * - WIN32getch API should be int like libc (with unsigned char values or -1).
+ * - The unicode code below can return 0 - incorrectly indicating scan code.
+ * - UTF16-LE surrogate pairs don't work (and return 0).
+ * - If win32_kbhit returns true then WIN32getch should never block, but it
+ *   will block till the next keypress if it's numlock/capslock scan code.
  */
 public char WIN32getch(void)
 {
@@ -2911,6 +2920,12 @@ public char WIN32getch(void)
 	static unsigned char utf8[UTF8_MAX_LENGTH];
 	static int utf8_size = 0;
 	static int utf8_next_byte = 0;
+
+	if (win_unget_pending)
+	{
+		win_unget_pending = FALSE;
+		return (char) win_unget_data;
+	}
 
 	// Return the rest of multibyte character from the prior call
 	if (utf8_next_byte < utf8_size)
@@ -2927,19 +2942,18 @@ public char WIN32getch(void)
 	}
 
 	do {
-		while (win32_kbhit() == FALSE)
+		while (!win32_kbhit())
 		{
 			Sleep(20);
 			if (ABORT_SIGS())
 				return ('\003');
-			continue;
 		}
-		keyCount --;
+		keyCount--;
 		// If multibyte character, return its first byte
 		if (currentKey.unicode > 0x7f)
 		{
 			utf8_size = WideCharToMultiByte(CP_UTF8, 0, &currentKey.unicode, 1, (LPSTR) &utf8, sizeof(utf8), NULL, NULL);
-			if (utf8_size == 0 )
+			if (utf8_size == 0)
 				return '\0';
 			ascii = utf8[0];
 			utf8_next_byte = 1;
@@ -2958,13 +2972,12 @@ public char WIN32getch(void)
 }
 
 /*
- * Restore the character read during iread.
+ * Make the next call to WIN32getch return ch without changing the queue state.
  */
 public void WIN32ungetch(int ch)
 {
-	currentKey.unicode = ch;
-	++keyCount;
-	pending_scancode = 0;
+	win_unget_pending = TRUE;
+	win_unget_data = ch;
 }
 #endif
 
