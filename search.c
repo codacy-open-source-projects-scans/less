@@ -1163,7 +1163,7 @@ static int get_seg(POSITION pos, POSITION tpos)
 	for (seg = 0;;  seg++)
 	{
 		POSITION npos = forw_line_seg(pos, FALSE, FALSE, TRUE);
-		if (npos > tpos)
+		if (npos > tpos || npos == NULL_POSITION)
 			return seg;
 		pos = npos;
 	}
@@ -1592,6 +1592,14 @@ public int search(int search_type, char *pattern, int n)
 
 	n = search_range(pos, NULL_POSITION, search_type, n, -1,
 			&pos, (POSITION*)NULL, &lastlinepos);
+	/*
+	 * This ABORT_SIGS check ensures that if the user presses interrupt,
+	 * we don't continue and complete the search.
+	 * That is, we leave the display unchanged.
+	 * {{ Is this true? Do we always want to abort the search on interrupt? }}
+	 */
+	if (ABORT_SIGS())
+		return (-1);
 	if (n != 0)
 	{
 		/*
