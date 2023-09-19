@@ -279,12 +279,9 @@ char PC_, *UP, *BC;
 extern int quiet;               /* If VERY_QUIET, use visual bell for bell */
 extern int no_vbell;
 extern int no_back_scroll;
-extern int swindow;
 extern int no_init;
 extern int no_keypad;
 extern int sigs;
-extern int wscroll;
-extern int screen_trashed;
 extern int top_scroll;
 extern int quit_if_one_screen;
 extern int oldbot;
@@ -295,6 +292,7 @@ extern int use_color;
 extern int hilite_search;
 #endif
 #if MSDOS_COMPILER==WIN32C
+extern int wscroll;
 extern HANDLE tty;
 extern DWORD console_mode;
 #ifndef ENABLE_EXTENDED_FLAGS
@@ -2150,7 +2148,7 @@ public void check_winch(void)
 			SetConsoleScreenBufferSize(con_out, size);
 		pos_init();
 		wscroll = (sc_height + 1) / 2;
-		screen_trashed = 1;
+		screen_trashed();
 	}
 #endif
 }
@@ -2969,7 +2967,6 @@ public int win32_kbhit(void)
  * Known issues:
  * - WIN32getch API should be int like libc (with unsigned char values or -1).
  * - The unicode code below can return 0 - incorrectly indicating scan code.
- * - UTF16-LE surrogate pairs don't work (and return 0).
  * - If win32_kbhit returns true then WIN32getch should never block, but it
  *   will block till the next keypress if it's numlock/capslock scan code.
  */
@@ -3013,9 +3010,9 @@ public char WIN32getch(void)
 			ascii = (char) currentKey.unicode;
 		else
 		{
-			char *up = utf8;
+			char *up = (char *) utf8;
 			put_wchar(&up, currentKey.unicode);
-			utf8_size = up - utf8;
+			utf8_size = up - (char *) utf8;
 			if (utf8_size == 0)
 				return '\0';
 			ascii = utf8[0];

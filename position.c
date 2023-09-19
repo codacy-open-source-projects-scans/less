@@ -25,7 +25,7 @@ static POSITION *table = NULL;  /* The position table */
 static int table_size = 0;
 
 extern int sc_width, sc_height;
-extern int header_lines;
+extern int hshift;
 
 /*
  * Return the starting file position of a line displayed on the screen.
@@ -235,4 +235,68 @@ public int sindex_from_sline(int sline)
 	 * Return zero-based line number, not one-based.
 	 */
 	return (sline-1);
+}
+
+/*
+ * Given a line that starts at linepos,
+ * and the character at byte offset choff into that line,
+ * return the number of characters (not bytes) between the
+ * beginning of the line and the first byte of the choff character.
+ */
+static int pos_shift(POSITION linepos, int choff)
+{
+	char *line;
+	int line_len;
+	POSITION pos;
+	int cvt_ops;
+	char *cline;
+
+	pos = forw_raw_line_len(linepos, choff, &line, &line_len);
+	if (pos == NULL_POSITION || line_len != choff)
+		return -1;
+	cvt_ops = get_cvt_ops(0); /* {{ Passing 0 ignores SRCH_NO_REGEX; does it matter? }} */
+	/* {{ It would be nice to be able to call cvt_text with dst=NULL, to avoid need to alloc a useless cline. }} */
+	cline = (char *) ecalloc(1, line_len);
+	cvt_text(cline, line, NULL, &line_len, cvt_ops);
+	free(cline);
+	return line_len;
+}
+
+/*
+ * Return the position of the first char of the line containing tpos.
+ * Thus if tpos is the first char of its line, just return tpos.
+ */
+static POSITION beginning_of_line(POSITION tpos)
+{
+	ch_seek(tpos);
+	while (ch_tell() != ch_zero())
+	{
+		int ch = ch_back_get();
+		if (ch == '\n')
+		{
+			(void) ch_forw_get();
+			break;
+		}
+	}
+	return ch_tell();
+}
+
+/*
+ * When viewing long lines, it may be that the first char in the top screen
+ * line is not the first char in its (file) line (the table is "beheaded").
+ * This function sets that entry to the position of the first char in the line,
+ * and sets hshift so that the first char in the first line is unchanged.
+ */
+public void pos_rehead(void)
+{
+	POSITION linepos;
+	POSITION tpos = table[TOP];
+	if (tpos == NULL_POSITION)
+		return;
+	linepos = beginning_of_line(tpos);
+	if (linepos == tpos)
+		return;
+	table[TOP] = linepos;
+	hshift = pos_shift(linepos, (int)(tpos - linepos));
+	screen_trashed();
 }

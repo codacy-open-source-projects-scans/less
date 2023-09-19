@@ -23,7 +23,6 @@ extern int sigs;
 extern int how_search;
 extern int caseless;
 extern int linenums;
-extern int sc_height;
 extern int jump_sline;
 extern int bs_mode;
 extern int proc_backspace;
@@ -34,10 +33,10 @@ extern void *ml_search;
 extern POSITION start_attnpos;
 extern POSITION end_attnpos;
 extern int utf_mode;
-extern int screen_trashed;
 extern int sc_width;
 extern int sc_height;
 extern int hshift;
+extern int match_shift;
 extern int nosearch_headers;
 extern int header_lines;
 extern int header_cols;
@@ -49,7 +48,7 @@ extern int can_goto_line;
 static int hide_hilite;
 static POSITION prep_startpos;
 static POSITION prep_endpos;
-extern POSITION xxpos;
+static POSITION header_end_pos = NULL_POSITION;
 
 /*
  * Structures for maintaining a set of ranges for hilites and filtered-out
@@ -209,7 +208,7 @@ public void init_search(void)
 /*
  * Determine which text conversions to perform before pattern matching.
  */
-static int get_cvt_ops(int search_type)
+public int get_cvt_ops(int search_type)
 {
 	int ops = 0;
 
@@ -495,6 +494,22 @@ static int hilited_range_attr(POSITION pos, POSITION epos)
 	return n->r.hl_attr;
 }
 
+/*
+ * Determine and save the position of the first char after any header lines.
+ */
+public void set_header_end_pos(void)
+{
+	header_end_pos = (header_lines == 0) ? NULL_POSITION : find_pos(header_lines+1);
+}
+
+/*
+ * Is a position within the header lines?
+ */
+static int pos_in_header(POSITION pos)
+{
+	return (header_end_pos != NULL_POSITION && pos < header_end_pos);
+}
+
 /* 
  * Is a line "filtered" -- that is, should it be hidden?
  */
@@ -503,7 +518,9 @@ public int is_filtered(POSITION pos)
 	struct hilite_node *n;
 
 	if (ch_getflags() & CH_HELPFILE)
-		return (0);
+		return (FALSE);
+	if (pos_in_header(pos))
+		return (FALSE);
 
 	n = hlist_find(&filter_anchor, pos);
 	return (n != NULL && pos >= n->r.hl_startpos);
@@ -518,6 +535,8 @@ public POSITION next_unfiltered(POSITION pos)
 	struct hilite_node *n;
 
 	if (ch_getflags() & CH_HELPFILE)
+		return (pos);
+	if (pos_in_header(pos))
 		return (pos);
 
 	n = hlist_find(&filter_anchor, pos);
@@ -539,6 +558,8 @@ public POSITION prev_unfiltered(POSITION pos)
 
 	if (ch_getflags() & CH_HELPFILE)
 		return (pos);
+	if (pos_in_header(pos))
+		return (pos);
 
 	n = hlist_find(&filter_anchor, pos);
 	while (n != NULL && pos >= n->r.hl_startpos)
@@ -552,6 +573,24 @@ public POSITION prev_unfiltered(POSITION pos)
 	return (pos);
 }
 
+static void shift_visible(int start_off, int end_off, int line_len)
+{
+	int swidth = sc_width - line_pfx_width();
+	int new_hshift;
+	if (end_off < swidth) /* whole string is in first screen */
+		new_hshift = 0;
+	else if (start_off >= line_len - swidth) /* whole string is in last screen */
+		new_hshift = line_len - swidth;
+	else if (start_off > hshift && end_off < hshift + swidth)
+		new_hshift = hshift; /* already visible; leave hshift unchanged */
+	else /* shift it to column match_shift */
+		new_hshift = (start_off < match_shift) ? 0 : (start_off - match_shift);
+	if (new_hshift != hshift)
+	{
+		hshift = new_hshift;
+		screen_trashed();
+	}
+}
 
 /*
  * Should any characters in a specified range be highlighted?
@@ -1153,23 +1192,6 @@ static POSITION get_lastlinepos(POSITION pos, POSITION tpos, int sheight)
 }
 
 /*
- * Get the segment index of tpos in the line starting at pos.
- * A segment is a string of printable chars that fills the screen width.
- */
-static int get_seg(POSITION pos, POSITION tpos)
-{
-	int seg;
-
-	for (seg = 0;;  seg++)
-	{
-		POSITION npos = forw_line_seg(pos, FALSE, FALSE, TRUE);
-		if (npos > tpos || npos == NULL_POSITION)
-			return seg;
-		pos = npos;
-	}
-}
-
-/*
  * Search a subset of the file, specified by start/end position.
  */
 static int search_range(POSITION pos, POSITION endpos, int search_type, int matches, int maxlines, POSITION *plinepos, POSITION *pendpos, POSITION *plastlinepos)
@@ -1385,20 +1407,7 @@ static int search_range(POSITION pos, POSITION endpos, int search_type, int matc
 						{
 							int start_off = sp[0] - cline;
 							int end_off = ep[0] - cline;
-							int save_hshift = hshift;
-							int sshift;
-							int eshift;
-							hshift = 0; /* make get_seg count screen lines */
-							sshift = swidth * get_seg(linepos, linepos + chpos[start_off]);
-							eshift = swidth * get_seg(linepos, linepos + chpos[end_off]);
-							if (sshift >= save_hshift && eshift <= save_hshift)
-							{
-								hshift = save_hshift;
-							} else
-							{
-								hshift = sshift;
-								screen_trashed = 1;
-							}
+							shift_visible(start_off, end_off, line_len);
 						}
 					} else if (plastlinepos != NULL)
 					{
@@ -1842,7 +1851,7 @@ public void set_filter_pattern(char *pattern, int search_type)
 		filter->next = filter_infos;
 		filter_infos = filter;
 	}
-	screen_trashed = 1;
+	screen_trashed();
 }
 
 /*

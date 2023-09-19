@@ -13,6 +13,8 @@
 
 	Major changes between "less" versions 633 and 644
 
+* Add --match-shift option.
+
 * Improve behavior of interrupt while reading non-terminated pipe
   (github #414).
 
@@ -22,13 +24,29 @@
 
 * Support entry of Unicode chars larger than U+FFFF on Windows (github #391).
 
+* Improve colors of bold, underline and standout text on Windows.
+
 * Fix bug where # substitution failed after viewing help (github #420).
 
 * Fix crash if files are deleted while less is viewing them (github #404).
 
-* Workaround unreliable ReadConsoleInputW behavior with non-ASCII input.
+* Workaround unreliable ReadConsoleInputW behavior on Windows
+  with non-ASCII input.
 
 * Fix -J display when searching for non-ASCII characters (github #422).
+
+* Don't filter header lines via the & command (github #423).
+
+* Fix bug when horizontally shifting long lines (github #425).
+
+* Add -x and -D options to lesstest, to make it easier to diagnose
+  a failed lesstest run.
+
+* Fix bug searching long lines with --incsearch and -S (github #428).
+
+* Fix bug that made ESC-} fail if top line on screen was empty (github #429).
+
+* Update Unicode tables.
 
 ======================================================================
 

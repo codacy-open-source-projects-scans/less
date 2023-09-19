@@ -16,7 +16,6 @@
 #include "less.h"
 #include "position.h"
 
-public int screen_trashed;
 public int squished;
 public int no_back_scroll = 0;
 public int forw_prompt;
@@ -32,8 +31,6 @@ extern int plusoption;
 extern int forw_scroll;
 extern int back_scroll;
 extern int ignore_eoi;
-extern int clear_bg;
-extern int final_attr;
 extern int header_lines;
 extern int header_cols;
 extern int full_screen;

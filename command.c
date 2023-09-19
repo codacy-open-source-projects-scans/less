@@ -24,7 +24,6 @@ extern int erase_char, erase2_char, kill_char;
 extern int sigs;
 extern int quit_if_one_screen;
 extern int one_screen;
-extern int squished;
 extern int sc_width;
 extern int sc_height;
 extern char *kent;
@@ -39,10 +38,7 @@ extern int hshift;
 extern int bs_mode;
 extern int proc_backspace;
 extern int show_attn;
-extern int status_col;
 extern POSITION highest_hilite;
-extern POSITION start_attnpos;
-extern POSITION end_attnpos;
 extern char *every_first_cmd;
 extern char version[];
 extern struct scrpos initial_scrpos;
@@ -50,19 +46,15 @@ extern IFILE curr_ifile;
 extern void *ml_search;
 extern void *ml_examine;
 extern int wheel_lines;
-extern int header_lines;
 extern int def_search_type;
 extern int updown_match;
 #if SHELL_ESCAPE || PIPEC
 extern void *ml_shell;
 #endif
 #if EDITOR
-extern char *editor;
 extern char *editproto;
 #endif
-extern int screen_trashed;      /* The screen has been overwritten */
 extern int shift_count;
-extern int oldbot;
 extern int forw_prompt;
 extern int incr_search;
 extern int full_screen;
@@ -86,6 +78,7 @@ static POSITION bottompos;
 static int save_hshift;
 static int save_bs_mode;
 static int save_proc_backspace;
+static int screen_trashed_value = 0;
 #if PIPEC
 static char pipec;
 #endif
@@ -733,7 +726,7 @@ static int mca_char(int c)
 					undo_search(1);
 			}
 			/* Redraw the search prompt and search string. */
-			if (!full_screen)
+			if (is_screen_trashed() || !full_screen)
 			{
 				clear();
 				repaint();
@@ -765,6 +758,21 @@ static void clear_buffers(void)
 #endif
 }
 
+public void screen_trashed_num(int trashed)
+{
+	screen_trashed_value = trashed;
+}
+
+public void screen_trashed(void)
+{
+	screen_trashed_num(1);
+}
+
+public int is_screen_trashed(void)
+{
+	return screen_trashed_value;
+}
+
 /*
  * Make sure the screen is displayed.
  */
@@ -785,13 +793,13 @@ static void make_display(void)
 			jump_loc(ch_zero(), 1);
 		else
 			jump_loc(initial_scrpos.pos, initial_scrpos.ln);
-	} else if (screen_trashed || !full_screen)
+	} else if (is_screen_trashed() || !full_screen)
 	{
 		int save_top_scroll = top_scroll;
 		int save_ignore_eoi = ignore_eoi;
 		top_scroll = 1;
 		ignore_eoi = 0;
-		if (screen_trashed == 2)
+		if (is_screen_trashed() == 2)
 		{
 			/* Special case used by ignore_eoi: re-open the input file
 			 * and jump to the end of the file. */
@@ -2043,12 +2051,12 @@ public void commands(void)
 			if (number > 0)
 				shift_count = number;
 			else
-				number = (shift_count > 0) ?
-					shift_count : sc_width / 2;
+				number = (shift_count > 0) ? shift_count : sc_width / 2;
 			if (number > hshift)
 				number = hshift;
+			pos_rehead();
 			hshift -= number;
-			screen_trashed = 1;
+			screen_trashed();
 			break;
 
 		case A_RSHIFT:
@@ -2058,26 +2066,28 @@ public void commands(void)
 			if (number > 0)
 				shift_count = number;
 			else
-				number = (shift_count > 0) ?
-					shift_count : sc_width / 2;
+				number = (shift_count > 0) ? shift_count : sc_width / 2;
+			pos_rehead();
 			hshift += number;
-			screen_trashed = 1;
+			screen_trashed();
 			break;
 
 		case A_LLSHIFT:
 			/*
 			 * Shift view left to margin.
 			 */
+			pos_rehead();
 			hshift = 0;
-			screen_trashed = 1;
+			screen_trashed();
 			break;
 
 		case A_RRSHIFT:
 			/*
 			 * Shift view right to view rightmost char on screen.
 			 */
+			pos_rehead();
 			hshift = rrshift();
-			screen_trashed = 1;
+			screen_trashed();
 			break;
 
 		case A_PREFIX:

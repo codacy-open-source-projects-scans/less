@@ -41,6 +41,7 @@ public int force_open;          /* Open the file even if not regular file */
 public int swindow;             /* Size of scrolling window */
 public int jump_sline;          /* Screen line of "jump target" */
 public long jump_sline_fraction = -1;
+public int shift_count;         /* Number of positions to shift horizontally */
 public long shift_count_fraction = -1;
 public int chopline;            /* Truncate displayed lines at screen width */
 public int wordwrap;            /* Wrap lines at space */
@@ -48,7 +49,6 @@ public int no_init;             /* Disable sending ti/te termcap strings */
 public int no_keypad;           /* Disable sending ks/ke termcap strings */
 public int twiddle;             /* Show tildes after EOF */
 public int show_attn;           /* Hilite first unread line */
-public int shift_count;         /* Number of positions to shift horizontally */
 public int status_col;          /* Display a status column */
 public int use_lessopen;        /* Use the LESSOPEN filter */
 public int quit_on_intr;        /* Quit on interrupt */
@@ -79,6 +79,8 @@ public int show_preproc_error;  /* Display msg when preproc exits with error */
 public int proc_backspace;      /* Special handling of backspace */
 public int proc_tab;            /* Special handling of tab */
 public int proc_return;         /* Special handling of carriage return */
+public int match_shift;         /* Extra horizontal shift on search match */
+public long match_shift_fraction = NUM_FRAC_DENOM/2; /* 1/2 of screen width */
 public char intr_char = CONTROL('X'); /* Char to interrupt reads */
 #if HILITE_SEARCH
 public int hilite_search;       /* Highlight matched search patterns? */
@@ -170,6 +172,7 @@ static struct optname show_preproc_error_optname = { "show-preproc-errors", NULL
 static struct optname proc_backspace_optname = { "proc-backspace", NULL };
 static struct optname proc_tab_optname = { "proc-tab", NULL };
 static struct optname proc_return_optname = { "proc-return", NULL };
+static struct optname match_shift_optname = { "match-shift", NULL };
 #if LESSTEST
 static struct optname ttyin_name_optname = { "tty",              NULL };
 #endif /*LESSTEST*/
@@ -391,7 +394,7 @@ static struct loption option[] =
 		}
 	},
 	{ 'S', &S__optname,
-		BOOL|REPAINT, OPT_OFF, &chopline, NULL,
+		BOOL|REPAINT, OPT_OFF, &chopline, opt__S,
 		{
 			"Fold long lines",
 			"Chop long lines",
@@ -706,6 +709,14 @@ static struct loption option[] =
 			"Carriage return handling is specified by the -U option",
 			"Delete carriage return before newline",
 			"Print carriage return as ^M"
+		}
+	},
+	{ OLETTER_NONE, &match_shift_optname,
+		STRING|INIT_HANDLER, 0, NULL, opt_match_shift,
+		{
+			"Search match shift: ",
+			".d",
+			NULL
 		}
 	},
 #if LESSTEST

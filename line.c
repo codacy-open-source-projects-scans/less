@@ -87,7 +87,6 @@ extern int proc_return;
 extern int linenums;
 extern int ctldisp;
 extern int twiddle;
-extern int binattr;
 extern int status_col;
 extern int status_col_width;
 extern int linenum_width;
@@ -1329,7 +1328,7 @@ public void null_line(void)
  * lines which are not split for screen width.
  * {{ This is supposed to be more efficient than forw_line(). }}
  */
-public POSITION forw_raw_line(POSITION curr_pos, char **linep, int *line_lenp)
+public POSITION forw_raw_line_len(POSITION curr_pos, int read_len, char **linep, int *line_lenp)
 {
 	int n;
 	int c;
@@ -1360,6 +1359,11 @@ public POSITION forw_raw_line(POSITION curr_pos, char **linep, int *line_lenp)
 			}
 		}
 		linebuf.buf[n++] = c;
+		if (read_len >= 0 && n >= read_len)
+		{
+			new_pos = ch_tell();
+			break;
+		}
 		c = ch_forw_get();
 	}
 	linebuf.buf[n] = '\0';
@@ -1368,6 +1372,11 @@ public POSITION forw_raw_line(POSITION curr_pos, char **linep, int *line_lenp)
 	if (line_lenp != NULL)
 		*line_lenp = n;
 	return (new_pos);
+}
+
+public POSITION forw_raw_line(POSITION curr_pos, char **linep, int *line_lenp)
+{
+	return forw_raw_line_len(curr_pos, -1, linep, line_lenp);
 }
 
 /*
@@ -1520,13 +1529,15 @@ public int rrshift(void)
 {
 	POSITION pos;
 	int save_width;
-	int line;
+	int sline;
 	int longest = 0;
 
 	save_width = sc_width;
-	sc_width = INT_MAX;
-	pos = position(TOP);
-	for (line = 0; line < sc_height && pos != NULL_POSITION; line++)
+	sc_width = INT_MAX; /* so forw_line() won't chop */
+	for (sline = TOP; sline < sc_height; sline++)
+		if ((pos = position(sline)) != NULL_POSITION)
+			break;
+	for (; sline < sc_height && pos != NULL_POSITION; sline++)
 	{
 		pos = forw_line(pos);
 		if (end_column > longest)

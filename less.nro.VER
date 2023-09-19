@@ -1221,6 +1221,21 @@ to specify a control character.
 Sets the minimum width of the line number field when the \-N option is in effect 
 to \fIn\fP characters.
 The default is 7.
+.IP "\-\-match-shift=\fIn\fP"
+When \-S is in effect, if a search match is not visible
+because it is shifted to the left or right of the currently
+visible screen, the text will horizontally shift 
+to ensure that the search match is visible.
+This option selects the column in which the first character
+of the search match will be placed after the shift.
+In other words, there will be \fIn\fP characters visible 
+to the left of the search match.
+
+Alternately, the number may be specified as a fraction of the width
+of the screen, starting with a decimal point: \&.5 is half of the
+screen width, \&.3 is three tenths of the screen width, and so on.
+If the number is specified as a fraction, the actual number of
+scroll positions is recalculated if the terminal window is resized.
 .IP "\-\-modelines=\fIn\fP"
 .RS
 Before displaying a file,
@@ -1741,7 +1756,7 @@ Selects the UTF-8 encoding of the ISO 10646 character set.
 UTF-8 is special in that it supports multi-byte characters in the input file.
 It is the only character set that supports multi-byte characters.
 .IP windows
-Selects a character set appropriate for Microsoft Windows (cp 1251).
+Selects a character set appropriate for Microsoft Windows (cp 1252).
 .PP
 In rare cases, it may be desired to tailor
 .B less
@@ -2015,7 +2030,7 @@ Notice how each question mark has a matching period,
 and how the % after the %pt
 is included literally by escaping it with a backslash.
 .sp
-?n?f%f\ .?m(%T %i of %m)\ ..?e(END)\ ?x-\ Next\e:\ %x..%t";
+?n?f%f\ .?m(%T %i of %m)\ ..?e(END)\ ?x-\ Next\e:\ %x..%t
 .sp
 This prints the filename if this is the first prompt in a file,
 followed by the "file N of N" message if there is more
