@@ -60,6 +60,7 @@ extern int incr_search;
 extern int full_screen;
 #if MSDOS_COMPILER==WIN32C
 extern int utf_mode;
+extern unsigned less_acp;
 #endif
 
 #if SHELL_ESCAPE
@@ -705,6 +706,7 @@ static int mca_char(int c)
 		{
 			/* Incremental search: do a search after every input char. */
 			int st = (search_type & (SRCH_FORW|SRCH_BACK|SRCH_NO_MATCH|SRCH_NO_REGEX|SRCH_NO_MOVE|SRCH_WRAP|SRCH_SUBSEARCH_ALL));
+			int save_updown_match = updown_match;
 			char *pattern = get_cmdbuf();
 			if (pattern == NULL)
 				return (MCA_MORE);
@@ -713,7 +715,6 @@ static int mca_char(int c)
 			 * reinits it. That breaks history scrolling.
 			 * {{ This is ugly. mca_search probably shouldn't call set_mlist. }}
 			 */
-			int save_updown_match = updown_match;
 			cmd_exec();
 			if (*pattern == '\0')
 			{
@@ -896,7 +897,7 @@ static void prompt(void)
 #if MSDOS_COMPILER==WIN32C
 		WCHAR w[MAX_PATH*2];
 		char  a[MAX_PATH*2];
-		MultiByteToWideChar(CP_ACP, 0, p, -1, w, sizeof(w)/sizeof(*w));
+		MultiByteToWideChar(less_acp, 0, p, -1, w, sizeof(w)/sizeof(*w));
 		WideCharToMultiByte(utf_mode ? CP_UTF8 : GetConsoleOutputCP(),
 		                    0, w, -1, a, sizeof(a), NULL, NULL);
 		p = a;

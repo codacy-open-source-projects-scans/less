@@ -23,8 +23,18 @@
 #define _WIN32_WINNT 0x400
 #endif
 #include <windows.h>
-public DWORD console_mode;
+#ifndef ENABLE_EXTENDED_FLAGS
+#define ENABLE_EXTENDED_FLAGS 0x80
+#define ENABLE_QUICK_EDIT_MODE 0x40
+#endif
+#ifndef ENABLE_VIRTUAL_TERMINAL_INPUT
+#define ENABLE_VIRTUAL_TERMINAL_INPUT 0x0200
+#endif
 public HANDLE tty;
+public DWORD init_console_input_mode;
+public DWORD curr_console_input_mode;
+public DWORD base_console_input_mode;
+public DWORD mouse_console_input_mode;
 #else
 public int tty;
 #endif
@@ -87,9 +97,14 @@ public void open_getchr(void)
 	tty = CreateFile("CONIN$", GENERIC_READ | GENERIC_WRITE,
 			FILE_SHARE_READ, &sa, 
 			OPEN_EXISTING, 0L, NULL);
-	GetConsoleMode(tty, &console_mode);
-	/* Make sure we get Ctrl+C events. */
-	SetConsoleMode(tty, ENABLE_PROCESSED_INPUT | ENABLE_MOUSE_INPUT);
+	GetConsoleMode(tty, &init_console_input_mode);
+	/* base mode: ensure we get ctrl-C events, and don't get VT input. */
+	base_console_input_mode = (init_console_input_mode | ENABLE_PROCESSED_INPUT) & ~ENABLE_VIRTUAL_TERMINAL_INPUT;
+	/* mouse mode: enable mouse and disable quick edit. */
+	mouse_console_input_mode = (base_console_input_mode | ENABLE_MOUSE_INPUT | ENABLE_EXTENDED_FLAGS) & ~ENABLE_QUICK_EDIT_MODE;
+	/* Start with base mode. If --mouse is given, switch to mouse mode in init_mouse. */
+	curr_console_input_mode = base_console_input_mode;
+	SetConsoleMode(tty, curr_console_input_mode);
 #else
 #if MSDOS_COMPILER
 	extern int fd0;
@@ -119,21 +134,21 @@ public void open_getchr(void)
 public void close_getchr(void)
 {
 #if MSDOS_COMPILER==WIN32C
-	SetConsoleMode(tty, console_mode);
+	SetConsoleMode(tty, init_console_input_mode);
 	CloseHandle(tty);
 #endif
 }
 
 #if MSDOS_COMPILER==WIN32C
 /*
- * Close the pipe, restoring the keyboard (CMD resets it, losing the mouse).
+ * Close the pipe, restoring the console mode (CMD resets it, losing the mouse).
  */
 public int pclose(FILE *f)
 {
 	int result;
 
 	result = _pclose(f);
-	SetConsoleMode(tty, ENABLE_PROCESSED_INPUT | ENABLE_MOUSE_INPUT);
+	SetConsoleMode(tty, curr_console_input_mode);
 	return result;
 }
 #endif

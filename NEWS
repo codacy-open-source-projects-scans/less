@@ -11,9 +11,19 @@
 
 ======================================================================
 
-	Major changes between "less" versions 633 and 644
+	Major changes between "less" versions 633 and 645
 
 * Add --match-shift option.
+
+* Mouse right-click jumps to position marked by left-click (github #390).
+
+* Ensure that the target line is not obscured by a header line 
+  set by --header (github #444).
+
+* Change default character set on Windows from dos to utf-8.
+
+* UCRT builds on Windows 10 and later now support Unicode file names
+  (github #438).
 
 * Improve behavior of interrupt while reading non-terminated pipe
   (github #414).
@@ -45,6 +55,8 @@
 * Fix bug searching long lines with --incsearch and -S (github #428).
 
 * Fix bug that made ESC-} fail if top line on screen was empty (github #429).
+
+* Fix bug with --mouse on Windows when used with pipes (github #440).
 
 * Update Unicode tables.
 

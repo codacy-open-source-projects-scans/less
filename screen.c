@@ -137,19 +137,8 @@ extern int sc_height;
 
 #if MSDOS_COMPILER==WIN32C
 #define UTF8_MAX_LENGTH 4
-struct keyRecord
-{
-	LWCHAR unicode;
-	int scan;
-} currentKey;
 
-static int keyCount = 0;
 static WORD curr_attr;
-static int pending_scancode = 0;
-static char x11mousebuf[] = "[M???";    /* Mouse report, after ESC */
-static int x11mousePos, x11mouseCount;
-static int win_unget_pending = FALSE;
-static int win_unget_data;
 
 static HANDLE con_out_save = INVALID_HANDLE_VALUE; /* previous console */
 static HANDLE con_out_ours = INVALID_HANDLE_VALUE; /* our own */
@@ -189,7 +178,11 @@ static int sy_fg_color;         /* Color of system text (before less) */
 static int sy_bg_color;
 public int sgr_mode;            /* Honor ANSI sequences rather than using above */
 #if MSDOS_COMPILER==WIN32C
-static DWORD init_output_mode;  /* The initial console output mode */
+static DWORD init_console_output_mode;
+extern DWORD init_console_input_mode;
+extern DWORD curr_console_input_mode;
+extern DWORD base_console_input_mode;
+extern DWORD mouse_console_input_mode;
 public int vt_enabled = -1;     /* Is virtual terminal processing available? */
 #endif
 #else
@@ -294,11 +287,6 @@ extern int hilite_search;
 #if MSDOS_COMPILER==WIN32C
 extern int wscroll;
 extern HANDLE tty;
-extern DWORD console_mode;
-#ifndef ENABLE_EXTENDED_FLAGS
-#define ENABLE_EXTENDED_FLAGS 0x80
-#define ENABLE_QUICK_EDIT_MODE 0x40
-#endif
 #else
 extern int tty;
 #endif
@@ -1181,7 +1169,7 @@ public void get_term(void)
 	 * before any file operations have been done on fd0.
 	 */
 	SET_BINARY(0);
-	GetConsoleMode(con_out, &init_output_mode);
+	GetConsoleMode(con_out, &init_console_output_mode);
 	GetConsoleScreenBufferInfo(con_out, &scr);
 	curr_attr = scr.wAttributes;
 	sy_bg_color = (curr_attr & BG_COLORS) >> 4; /* normalize */
@@ -1575,14 +1563,13 @@ static void initcolor(void)
  */
 static void win32_init_vt_term(void)
 {
-	DWORD output_mode;
+	DWORD console_output_mode;
 
 	if (vt_enabled == 0 || (vt_enabled == 1 && con_out == con_out_ours))
 		return;
 
-	GetConsoleMode(con_out, &output_mode);
-	vt_enabled = SetConsoleMode(con_out,
-		       output_mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+	console_output_mode = init_console_output_mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+	vt_enabled = SetConsoleMode(con_out, console_output_mode);
 	if (vt_enabled)
 	{
 	    auto_wrap = 0;
@@ -1593,7 +1580,7 @@ static void win32_init_vt_term(void)
 static void win32_deinit_vt_term(void)
 {
 	if (vt_enabled == 1 && con_out == con_out_save)
-		SetConsoleMode(con_out, init_output_mode);
+		SetConsoleMode(con_out, init_console_output_mode);
 }
 
 /*
@@ -1710,9 +1697,8 @@ public void init_mouse(void)
 	ltputs(sc_s_mousecap, sc_height, putchr);
 #else
 #if MSDOS_COMPILER==WIN32C
-	SetConsoleMode(tty, ENABLE_PROCESSED_INPUT | ENABLE_MOUSE_INPUT
-			    | ENABLE_EXTENDED_FLAGS /* disable quick edit */);
-
+	curr_console_input_mode = mouse_console_input_mode;
+	SetConsoleMode(tty, curr_console_input_mode);
 #endif
 #endif
 }
@@ -1727,8 +1713,8 @@ public void deinit_mouse(void)
 	ltputs(sc_e_mousecap, sc_height, putchr);
 #else
 #if MSDOS_COMPILER==WIN32C
-	SetConsoleMode(tty, ENABLE_PROCESSED_INPUT | ENABLE_EXTENDED_FLAGS
-			    | (console_mode & ENABLE_QUICK_EDIT_MODE));
+	curr_console_input_mode = base_console_input_mode;
+	SetConsoleMode(tty, curr_console_input_mode);
 #endif
 #endif
 }
@@ -2791,6 +2777,7 @@ public void putbs(void)
 
 #if MSDOS_COMPILER==WIN32C
 
+#define WIN32_MAX_REPEAT 3
 #define LAST_DOWN_COUNT 8
 static LWCHAR last_downs[LAST_DOWN_COUNT] = { 0 };
 static int last_down_index = 0;
@@ -2800,6 +2787,107 @@ typedef struct XINPUT_RECORD {
 	INPUT_RECORD ir;
 	LWCHAR ichar; /* because ir...UnicodeChar is only 16 bits */
 } XINPUT_RECORD;
+
+typedef struct WIN32_CHAR {
+	struct WIN32_CHAR *wc_next;
+	char wc_ch;
+} WIN32_CHAR;
+
+static WIN32_CHAR *win32_queue = NULL;
+
+/*
+ * Is the win32_queue nonempty?
+ */
+static int win32_queued_char(void)
+{
+	return (win32_queue != NULL);
+}
+
+/*
+ * Push a char onto the back of the win32_queue.
+ */
+static void win32_enqueue(char ch)
+{
+	WIN32_CHAR *wch = (WIN32_CHAR *) ecalloc(1, sizeof(WIN32_CHAR));
+	wch->wc_ch = ch;
+	wch->wc_next = NULL;
+	if (win32_queue == NULL)
+		win32_queue = wch;
+	else
+	{
+		WIN32_CHAR *pch;
+		for (pch = win32_queue; pch->wc_next != NULL; pch = pch->wc_next)
+			continue;
+		pch->wc_next = wch;
+	}
+}
+
+/*
+ * Push a char onto the front of the win32_queue.
+ * Makes the next call to WIN32getch return ch.
+ */
+public void WIN32ungetch(int ch)
+{
+	WIN32_CHAR *wch = (WIN32_CHAR *) ecalloc(1, sizeof(WIN32_CHAR));
+	wch->wc_ch = ch;
+	wch->wc_next = win32_queue;
+	win32_queue = wch;
+}
+
+/*
+ * Get a char from the front of the win32_queue.
+ */
+static char win32_get_queue(void)
+{
+	WIN32_CHAR *wch = win32_queue;
+	char ch = wch->wc_ch;
+	win32_queue = wch->wc_next;
+	free(wch);
+	return ch;
+}
+
+/*
+ * Handle a mouse input event.
+ */
+static int win32_mouse_event(XINPUT_RECORD *xip)
+{
+	char b;
+
+	if (!mousecap || xip->ir.EventType != MOUSE_EVENT ||
+		xip->ir.Event.MouseEvent.dwEventFlags == MOUSE_MOVED)
+		return (FALSE);
+
+	/* Generate an X11 mouse sequence from the mouse event. */
+	/* TODO: switch to the 1006 protocol to allow specific-button-up reports */
+	switch (xip->ir.Event.MouseEvent.dwEventFlags)
+	{
+	case 0: /* press or release */
+		if (xip->ir.Event.MouseEvent.dwButtonState == 0)
+			b = X11MOUSE_OFFSET + X11MOUSE_BUTTON_REL;
+		else if (xip->ir.Event.MouseEvent.dwButtonState == 1)  /* leftmost */
+			b = X11MOUSE_OFFSET + X11MOUSE_BUTTON1;
+		else if (xip->ir.Event.MouseEvent.dwButtonState == 2)  /* rightmost */
+			b = X11MOUSE_OFFSET + X11MOUSE_BUTTON3;
+		else if (xip->ir.Event.MouseEvent.dwButtonState == 4)  /* middle ("next-to-leftmost") */
+			b = X11MOUSE_OFFSET + X11MOUSE_BUTTON2;
+		else  /* don't bother to figure out what changed */
+			return (FALSE);
+		break;
+	case MOUSE_WHEELED:
+		b = X11MOUSE_OFFSET + (((int)xip->ir.Event.MouseEvent.dwButtonState < 0) ? X11MOUSE_WHEEL_DOWN : X11MOUSE_WHEEL_UP);
+		break;
+	default:
+		return (FALSE);
+	}
+	/* {{ TODO: change to X11 1006 format. }} */
+	win32_enqueue(ESC);
+	win32_enqueue('[');
+	win32_enqueue('M');
+	win32_enqueue(b);
+	win32_enqueue(X11MOUSE_OFFSET + xip->ir.Event.MouseEvent.dwMousePosition.X + 1);
+	win32_enqueue(X11MOUSE_OFFSET + xip->ir.Event.MouseEvent.dwMousePosition.Y + 1);
+	return (TRUE);
+}
 
 static void set_last_down(LWCHAR ch)
 {
@@ -2818,49 +2906,118 @@ static LWCHAR *find_last_down(LWCHAR ch)
 	return NULL;
 }
 
-static int console_input(HANDLE tty, XINPUT_RECORD *xip)
+/*
+ * Get an input char from an INPUT_RECORD and store in xip->ichar.
+ * Handles surrogate chars, and KeyUp without previous corresponding KeyDown.
+ */
+static int win32_get_ichar(XINPUT_RECORD *xip)
 {
-	DWORD read;
-
-	for (;;)
+	LWCHAR ch = xip->ir.Event.KeyEvent.uChar.UnicodeChar;
+	xip->ichar = ch;
+	if (!is_ascii_char(ch))
 	{
-		PeekConsoleInputW(tty, &xip->ir, 1, &read);
-		if (read == 0)
-			return (FALSE);
-		ReadConsoleInputW(tty, &xip->ir, 1, &read);
-		if (read == 0)
-			return (FALSE);
-
-		if (xip->ir.EventType == KEY_EVENT) {
-			LWCHAR ch = xip->ir.Event.KeyEvent.uChar.UnicodeChar;
-			xip->ichar = ch;
-			if (!is_ascii_char(ch))
-			{
-				int is_down = xip->ir.Event.KeyEvent.bKeyDown;
-				LWCHAR *last_down = find_last_down(ch);
-
-				if (last_down == NULL) { /* key was up */
-					if (is_down) { /* key was up, now is down */
-						set_last_down(ch);
-					} else { /* key up without previous down: pretend this is a down. */
-						xip->ir.Event.KeyEvent.bKeyDown = TRUE;
-					}
-				} else if (!is_down) { /* key was down, now is up */
-					*last_down = 0; /* use this last_down only once */
-				}
-
-				if (ch >= 0xD800 && ch < 0xDC00) { /* high surrogate */
-					hi_surr = 0x10000 + ((ch - 0xD800) << 10);
-					continue; /* get next input, which should be the low surrogate */
-				}
-				if (ch >= 0xDC00 && ch < 0xE000) { /* low surrogate */
-					xip->ichar = hi_surr + (ch - 0xDC00);
-					hi_surr = 0;
-				}
+		int is_down = xip->ir.Event.KeyEvent.bKeyDown;
+		LWCHAR *last_down = find_last_down(ch);
+		if (last_down == NULL) { /* key was up */
+			if (is_down) { /* key was up, now is down */
+				set_last_down(ch);
+			} else { /* key up without previous down: pretend this is a down. */
+				xip->ir.Event.KeyEvent.bKeyDown = TRUE;
 			}
+		} else if (!is_down) { /* key was down, now is up */
+			*last_down = 0; /* use this last_down only once */
 		}
-		return (TRUE);
+
+		if (ch >= 0xD800 && ch < 0xDC00) { /* high surrogate */
+			hi_surr = 0x10000 + ((ch - 0xD800) << 10);
+			return (FALSE); /* get next input, which should be the low surrogate */
+		}
+		if (ch >= 0xDC00 && ch < 0xE000) { /* low surrogate */
+			xip->ichar = hi_surr + (ch - 0xDC00);
+			hi_surr = 0;
+		}
 	}
+	return (TRUE);
+}
+
+/*
+ * Handle a scan code (non-ASCII) key input.
+ */
+static int win32_scan_code(XINPUT_RECORD *xip)
+{
+	int scan = -1;
+	if (xip->ir.Event.KeyEvent.dwControlKeyState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED))
+	{
+		switch (xip->ir.Event.KeyEvent.wVirtualScanCode)
+		{
+		case PCK_RIGHT: /* right arrow */
+			scan = PCK_CTL_RIGHT;
+			break;
+		case PCK_LEFT: /* left arrow */
+			scan = PCK_CTL_LEFT;
+			break;
+		case PCK_DELETE: /* delete */
+			scan = PCK_CTL_DELETE;
+			break;
+		}
+	} else if (xip->ir.Event.KeyEvent.dwControlKeyState & SHIFT_PRESSED)
+	{
+		if (xip->ichar == '\t')
+			scan = PCK_SHIFT_TAB;
+	}
+	if (scan < 0 && xip->ichar == 0)
+		scan = xip->ir.Event.KeyEvent.wVirtualScanCode;
+	if (scan < 0)
+		return (FALSE);
+	/*
+	 * An extended key returns a 2 byte sequence consisting of
+	 * a zero byte followed by the scan code.
+	 */
+	win32_enqueue('\0');
+	win32_enqueue(scan);
+	return (TRUE);
+}
+
+/*
+ * Handle a key input event.
+ */
+static int win32_key_event(XINPUT_RECORD *xip)
+{
+	int repeat;
+	char utf8[UTF8_MAX_LENGTH];
+	char *up;
+	char *p;
+
+	if (xip->ir.EventType != KEY_EVENT ||
+	    ((xip->ir.Event.KeyEvent.dwControlKeyState & (RIGHT_ALT_PRESSED|LEFT_CTRL_PRESSED)) == (RIGHT_ALT_PRESSED|LEFT_CTRL_PRESSED) && xip->ir.Event.KeyEvent.uChar.UnicodeChar == 0) ||
+	    (xip->ir.Event.KeyEvent.wVirtualScanCode == 0 && xip->ir.Event.KeyEvent.uChar.UnicodeChar == 0) ||
+	    xip->ir.Event.KeyEvent.wVirtualScanCode == PCK_CAPS_LOCK ||
+	    xip->ir.Event.KeyEvent.wVirtualScanCode == PCK_NUM_LOCK ||
+	    (xip->ir.Event.KeyEvent.wVirtualKeyCode == VK_MENU && xip->ir.Event.KeyEvent.uChar.UnicodeChar == 0) ||
+	    xip->ir.Event.KeyEvent.wVirtualKeyCode == VK_KANJI ||
+	    xip->ir.Event.KeyEvent.wVirtualKeyCode == VK_SHIFT ||
+	    xip->ir.Event.KeyEvent.wVirtualKeyCode == VK_CONTROL)
+		return (FALSE);
+
+	if (!win32_get_ichar(xip))
+		return (FALSE);
+	if (!xip->ir.Event.KeyEvent.bKeyDown)
+		return (FALSE);
+		
+	if (win32_scan_code(xip))
+		return (TRUE);
+
+	repeat = xip->ir.Event.KeyEvent.wRepeatCount;
+	if (repeat > WIN32_MAX_REPEAT)
+		repeat = WIN32_MAX_REPEAT;
+	up = utf8;
+	put_wchar(&up, xip->ichar);
+	for (; repeat > 0; --repeat)
+	{
+		for (p = utf8; p < up; ++p)
+			 win32_enqueue(*p);
+	}
+	return (TRUE);
 }
 
 /*
@@ -2870,175 +3027,52 @@ public int win32_kbhit(void)
 {
 	XINPUT_RECORD xip;
 
-	if (keyCount > 0 || win_unget_pending)
+	if (win32_queued_char())
 		return (TRUE);
 
-	currentKey.unicode = 0;
-	currentKey.scan = 0;
-
-	if (x11mouseCount > 0)
+	for (;;)
 	{
-		currentKey.unicode = x11mousebuf[x11mousePos++];
-		--x11mouseCount;
-		keyCount = 1;
-		return (TRUE);
-	}
-
-	/*
-	 * Wait for a real key-down event, but
-	 * ignore SHIFT and CONTROL key events.
-	 */
-	do
-	{
-		if (!console_input(tty, &xip))
+		DWORD nread;
+		DWORD console_input_mode;
+		/*
+		 * When an input pipe closes, cmd may reset the console mode,
+		 * so set the mode every time we read input.
+		 */
+		if (GetConsoleMode(tty, &console_input_mode) && console_input_mode != curr_console_input_mode)
+			SetConsoleMode(tty, curr_console_input_mode);
+		PeekConsoleInputW(tty, &xip.ir, 1, &nread);
+		if (nread == 0)
 			return (FALSE);
-
-		if (mousecap && xip.ir.EventType == MOUSE_EVENT &&
-		    xip.ir.Event.MouseEvent.dwEventFlags != MOUSE_MOVED)
-		{
-			/* Generate an X11 mouse sequence from the mouse event. */
-			x11mousebuf[3] = X11MOUSE_OFFSET + xip.ir.Event.MouseEvent.dwMousePosition.X + 1;
-			x11mousebuf[4] = X11MOUSE_OFFSET + xip.ir.Event.MouseEvent.dwMousePosition.Y + 1;
-			switch (xip.ir.Event.MouseEvent.dwEventFlags)
-			{
-			case 0: /* press or release */
-				if (xip.ir.Event.MouseEvent.dwButtonState == 0)
-					x11mousebuf[2] = X11MOUSE_OFFSET + X11MOUSE_BUTTON_REL;
-				else if (xip.ir.Event.MouseEvent.dwButtonState & (FROM_LEFT_3RD_BUTTON_PRESSED | FROM_LEFT_4TH_BUTTON_PRESSED))
-					continue;
-				else
-					x11mousebuf[2] = X11MOUSE_OFFSET + X11MOUSE_BUTTON1 + ((int)xip.ir.Event.MouseEvent.dwButtonState << 1);
-				break;
-			case MOUSE_WHEELED:
-				x11mousebuf[2] = X11MOUSE_OFFSET + (((int)xip.ir.Event.MouseEvent.dwButtonState < 0) ? X11MOUSE_WHEEL_DOWN : X11MOUSE_WHEEL_UP);
-				break;
-			default:
-				continue;
-			}
-			x11mousePos = 0;
-			x11mouseCount = 5;
-			currentKey.unicode = ESC;
-			keyCount = 1;
-			return (TRUE);
-		}
-	} while (xip.ir.EventType != KEY_EVENT ||
-		xip.ir.Event.KeyEvent.bKeyDown != TRUE ||
-		((xip.ir.Event.KeyEvent.dwControlKeyState & (RIGHT_ALT_PRESSED|LEFT_CTRL_PRESSED)) == (RIGHT_ALT_PRESSED|LEFT_CTRL_PRESSED) && xip.ir.Event.KeyEvent.uChar.UnicodeChar == 0) ||
-		(xip.ir.Event.KeyEvent.wVirtualScanCode == 0 && xip.ir.Event.KeyEvent.uChar.UnicodeChar == 0) ||
-		(xip.ir.Event.KeyEvent.wVirtualKeyCode == VK_MENU && xip.ir.Event.KeyEvent.uChar.UnicodeChar == 0) ||
-		xip.ir.Event.KeyEvent.wVirtualKeyCode == VK_KANJI ||
-		xip.ir.Event.KeyEvent.wVirtualKeyCode == VK_SHIFT ||
-		xip.ir.Event.KeyEvent.wVirtualKeyCode == VK_CONTROL);
-		
-	currentKey.unicode = xip.ichar;
-	currentKey.scan = xip.ir.Event.KeyEvent.wVirtualScanCode;
-	keyCount = xip.ir.Event.KeyEvent.wRepeatCount;
-
-	if (xip.ir.Event.KeyEvent.dwControlKeyState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED))
-	{
-		switch (currentKey.scan)
-		{
-		case PCK_RIGHT: /* right arrow */
-			currentKey.scan = PCK_CTL_RIGHT;
+		ReadConsoleInputW(tty, &xip.ir, 1, &nread);
+		if (nread == 0)
+			return (FALSE);
+		if (win32_mouse_event(&xip) || win32_key_event(&xip))
 			break;
-		case PCK_LEFT: /* left arrow */
-			currentKey.scan = PCK_CTL_LEFT;
-			break;
-		case PCK_DELETE: /* delete */
-			currentKey.scan = PCK_CTL_DELETE;
-			break;
-		}
-	} else if (xip.ir.Event.KeyEvent.dwControlKeyState & SHIFT_PRESSED)
-	{
-		switch (currentKey.scan)
-		{
-		case PCK_SHIFT_TAB: /* tab */
-			currentKey.unicode = 0;
-			break;
-		}
 	}
-
 	return (TRUE);
 }
 
 /*
  * Read a character from the keyboard.
- *
- * Known issues:
- * - WIN32getch API should be int like libc (with unsigned char values or -1).
- * - The unicode code below can return 0 - incorrectly indicating scan code.
- * - If win32_kbhit returns true then WIN32getch should never block, but it
- *   will block till the next keypress if it's numlock/capslock scan code.
  */
 public char WIN32getch(void)
 {
-	char ascii;
-	static unsigned char utf8[UTF8_MAX_LENGTH];
-	static int utf8_size = 0;
-	static int utf8_next_byte = 0;
-
-	if (win_unget_pending)
+	while (!win32_kbhit())
 	{
-		win_unget_pending = FALSE;
-		return (char) win_unget_data;
+		Sleep(20);
+		if (ABORT_SIGS())
+			return ('\003');
 	}
-
-	/* Return the rest of multibyte character from the prior call */
-	if (utf8_next_byte < utf8_size)
-	{
-		ascii = utf8[utf8_next_byte++];
-		return ascii;
-	}
-	utf8_size = 0;
-
-	if (pending_scancode)
-	{
-		pending_scancode = 0;
-		return ((char)(currentKey.scan & 0x00FF));
-	}
-
-	do {
-		while (!win32_kbhit())
-		{
-			Sleep(20);
-			if (ABORT_SIGS())
-				return ('\003');
-		}
-		keyCount--;
-		/* If multibyte character, return its first byte */
-		if (is_ascii_char(currentKey.unicode))
-			ascii = (char) currentKey.unicode;
-		else
-		{
-			char *up = (char *) utf8;
-			put_wchar(&up, currentKey.unicode);
-			utf8_size = up - (char *) utf8;
-			if (utf8_size == 0)
-				return '\0';
-			ascii = utf8[0];
-			utf8_next_byte = 1;
-		}
-		/*
-		 * On PC's, the extended keys return a 2 byte sequence beginning 
-		 * with '00', so if the ascii code is 00, the next byte will be 
-		 * the lsb of the scan code.
-		 */
-		pending_scancode = (ascii == 0x00);
-	} while (pending_scancode &&
-		(currentKey.scan == PCK_CAPS_LOCK || currentKey.scan == PCK_NUM_LOCK));
-
-	return ascii;
+	return (win32_get_queue());
 }
 
-/*
- * Make the next call to WIN32getch return ch without changing the queue state.
- */
-public void WIN32ungetch(int ch)
+public void win32_getch_clear(void)
 {
-	win_unget_pending = TRUE;
-	win_unget_data = ch;
+	while (win32_kbhit())
+		(void) WIN32getch();
 }
-#endif
+
+#endif /* MSDOS_COMPILER==WIN32C */
 
 #if MSDOS_COMPILER
 /*
@@ -3074,4 +3108,3 @@ public void WIN32textout(char *text, int len)
 #endif
 }
 #endif
-
