@@ -36,8 +36,8 @@ public POSITION end_attnpos = NULL_POSITION;
 public int      wscroll;
 public char *   progname;
 public int      quitting;
-public int      secure;
 public int      dohelp;
+static int      secure_allow_features;
 
 #if LOGFILE
 public int      logfile = -1;
@@ -146,6 +146,86 @@ cleanup:
 }
 #endif
 
+static int security_feature_error(constant char *type, int len, constant char *name)
+{
+	PARG parg;
+	int msglen = len+strlen(type)+64;
+	parg.p_string = ecalloc(msglen, sizeof(char));
+	SNPRINTF3(parg.p_string, msglen, "LESSSECURE_ALLOW: %s feature name \"%.*s\"", type, len, name);
+	error("%s", &parg);
+	free(parg.p_string);
+	return 0;
+}
+
+/*
+ * Return the SF_xxx value of a secure feature given the name of the feature.
+ */
+static int security_feature(constant char *name, int len)
+{
+	struct secure_feature { constant char *name; int sf_value; };
+	static struct secure_feature features[] = {
+		{ "edit",     SF_EDIT },
+		{ "examine",  SF_EXAMINE },
+		{ "glob",     SF_GLOB },
+		{ "history",  SF_HISTORY },
+		{ "lesskey",  SF_LESSKEY },
+		{ "lessopen", SF_LESSOPEN },
+		{ "logfile",  SF_LOGFILE },
+		{ "pipe",     SF_PIPE },
+		{ "shell",    SF_SHELL },
+		{ "stop",     SF_STOP },
+		{ "tags",     SF_TAGS },
+	};
+	int i;
+	int match = -1;
+
+	for (i = 0;  i < sizeof(features)/sizeof(*features);  i++)
+	{
+		if (strncmp(features[i].name, name, len) == 0)
+		{
+			if (match >= 0) /* name is ambiguous */
+				return security_feature_error("ambiguous", len, name);
+			match = i;
+		}
+	}
+	if (match < 0)
+		return security_feature_error("invalid", len, name);
+	return features[match].sf_value;
+}
+
+/*
+ * Set the secure_allow_features bitmask, which controls
+ * whether certain secure features are allowed.
+ */
+static void init_secure(void)
+{
+#if SECURE
+	secure_allow_features = 0;
+#else
+	char *str = lgetenv("LESSSECURE");
+	if (isnullenv(str))
+		secure_allow_features = ~0; /* allow everything */
+	else
+		secure_allow_features = 0; /* allow nothing */
+
+	str = lgetenv("LESSSECURE_ALLOW");
+	if (!isnullenv(str))
+	{
+		for (;;)
+		{
+			char *estr;
+			while (*str == ' ' || *str == ',') ++str; /* skip leading spaces/commas */
+			if (*str == '\0') break;
+			estr = strchr(str, ',');
+			if (estr == NULL) estr = str + strlen(str);
+			while (estr > str && estr[-1] == ' ') --estr; /* trim trailing spaces */
+			secure_allow_features |= security_feature(str, estr-str);
+			str = estr;
+		}
+	}
+#endif
+}
+
 /*
  * Entry point.
  */
@@ -166,15 +246,7 @@ int main(int argc, char *argv[])
 
 	progname = *argv++;
 	argc--;
-
-#if SECURE
-	secure = 1;
-#else
-	secure = 0;
-	s = lgetenv("LESSSECURE");
-	if (!isnullenv(s))
-		secure = 1;
-#endif
+	init_secure();
 
 #ifdef WIN32
 	if (getenv("HOME") == NULL)
@@ -206,7 +278,6 @@ int main(int argc, char *argv[])
 	init_mark();
 	init_cmds();
 	init_poll();
-	get_term();
 	init_charset();
 	init_line();
 	init_cmdhist();
@@ -223,6 +294,7 @@ int main(int argc, char *argv[])
 
 	init_prompt();
 
+	init_unsupport();
 	s = lgetenv(less_is_more ? "MORE" : "LESS");
 	if (s != NULL)
 		scan_option(s);
@@ -248,6 +320,7 @@ int main(int argc, char *argv[])
 		quit(QUIT_OK);
 	}
 
+	get_term();
 	expand_cmd_tables();
 
 #if EDITOR
@@ -515,4 +588,12 @@ public void quit(int status)
 #endif
 	close_getchr();
 	exit(status);
+} 
+	
+/*
+ * Are all the features in the features mask allowed by security?
+ */
+public int secure_allow(int features)
+{
+	return ((secure_allow_features & features) == features);
 }

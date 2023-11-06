@@ -846,6 +846,7 @@ if a lesskey file is found in a standard place (see KEY BINDINGS),
 it is also used as a
 .B lesskey
 file.
+Note the warning under "\-\-lesskey-content" below.
 .IP "\-\-lesskey-src=\fIfilename\fP"
 Causes
 .B less
@@ -871,6 +872,26 @@ Newer versions of
 read the
 .I "lesskey source"
 file directly and ignore the binary file if the source file exists.
+Note the warning under "\-\-lesskey-content" below.
+.IP "\-\-lesskey-content=\fItext\fP"
+Causes less to interpret the specified text as the contents of a
+.BR lesskey (1)
+source file.
+In the text,
+.B lesskey
+lines may be separated by either newlines as usual, or by semicolons.
+A literal semicolon may be represented by a backslash followed by a semicolon.
+.sp
+Warning: certain environment variables such as 
+LESS, LESSSECURE, LESSCHARSET and others,
+which are used early in startup, 
+cannot be set in a file specified by a command line option
+(\-\-lesskey, \-\-lesskey-src or \-\-lesskey-content).  When using a
+.B lesskey
+file to set environment variables, it is safer to use the
+default lesskey file, or to specify the file using the
+LESSKEYIN or LESSKEY_CONTENT environment variables rather than using 
+a command line option.
 .IP "\-K or \-\-quit-on-intr"
 Causes
 .B less
@@ -2083,33 +2104,51 @@ changed to modify this default.
 When the environment variable LESSSECURE is set to 1,
 .B less
 runs in a "secure" mode.
-This means these features are disabled:
-.RS
-.IP "!"
-the shell command
-.IP "#"
-the pshell command
-.IP "|"
-the pipe command
-.IP ":e"
-the examine command.
-.IP "v"
-the editing command
-.IP "s  \-o"
-log files
-.IP "\-k"
-use of lesskey files
-.IP "\-t"
-use of tags files
-.IP
-metacharacters in filenames, such as *
-.IP
-filename completion (TAB, \(haL)
-.IP
+In this mode, these features are disabled:
+.IP "edit" 10
+the edit command (v)
+.IP "examine"
+the examine command (:e) 
+.IP "glob"
+metacharacters such as * in filenames,
+.br
+and filename completion (TAB, \(haL)
+.IP "history"
 history file
-.RE
+.IP "lesskey"
+use of lesskey files (-k and --lesskey-src)
+.IP "lessopen"
+input preprocessor (LESSOPEN environment variable)
+.IP "logfile"
+log files (s and -o)
+.IP "pipe"
+the pipe command (|) 
+.IP "shell"
+the shell and pshell commands (! and #)
+.IP "stop"
+stopping
+.B less
+via a SIGSTOP signal
+.IP "tags"
+use of tags files (-t)
+.PP
+The LESSSECURE_ALLOW environment variable can be set to a comma-separated list
+of names of features which are selectively enabled when LESSSECURE is set.
+Each feature name is the first word in each line in the above list.
+A feature name may be abbreviated as long as the abbreviation is unambiguous.
+For example, if 
+.nh
+LESSSECURE=1
+.hy
+and
+.nh
+LESSSECURE_ALLOW=hist,edit
+.hy
+were set, all of the above features would be disabled 
+except for history files and the edit command.
 .PP
 Less can also be compiled to be permanently in "secure" mode.
+In that case, the LESSSECURE and LESSSECURE_ALLOW variables are ignored.
 .
 .SH "COMPATIBILITY WITH MORE"
 If the environment variable LESS_IS_MORE is set to 1,
@@ -2230,6 +2269,8 @@ file.
 Name of the default
 .I "lesskey binary"
 file. (Not used if "$LESSKEYIN" exists.)
+.IP LESSKEY_CONTENT
+The value is parsed as if it were the parameter of a \-\-lesskey-content option.
 .IP LESSKEYIN_SYSTEM
 Name of the default system-wide
 .I "lesskey source"
@@ -2249,6 +2290,9 @@ metacharacters will not be passed to the shell.
 Command line to invoke the (optional) input-preprocessor.
 .IP LESSSECURE
 Runs less in "secure" mode.
+See discussion under SECURITY.
+.IP LESSSECURE_ALLOW
+Enables individual features which are normally disabled by LESSSECURE.
 See discussion under SECURITY.
 .IP LESSSEPARATOR
 String to be appended to a directory name in filename completion.
@@ -2287,6 +2331,13 @@ command.
 .IP LESS_TERMCAP_xx
 Where "xx" is any two characters, overrides the definition 
 of the termcap "xx" capability for the terminal.
+.IP LESS_UNSUPPORT
+A space-separated list of command line options.
+These options will be ignored (with no error message) if they appear 
+on the command line or in the LESS environment variable.
+Options listed in LESS_UNSUPPORT can still be changed by the \- and \-\- commands.
+Each option in LESS_UNSUPPORT is a dash followed by a single character 
+option letter, or two dashes followed by a long option name.
 .IP LINES
 Sets the number of lines on the screen.
 Takes precedence over the number of lines specified by the TERM variable.
