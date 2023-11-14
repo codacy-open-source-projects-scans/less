@@ -51,7 +51,7 @@ extern int vt_enabled;
 public void put_line(void)
 {
 	int c;
-	int i;
+	size_t i;
 	int a;
 
 	if (ABORT_SIGS())
@@ -291,7 +291,7 @@ static void win_flush(void)
 						 * Leave it unprocessed
 						 * in the buffer.
 						 */
-						int slop = (int) (q - anchor);
+						size_t slop = ptr_diff(q, anchor);
 						/* {{ strcpy args overlap! }} */
 						strcpy(obuf, anchor);
 						ob = &obuf[slop];
@@ -345,9 +345,9 @@ static void win_flush(void)
  */
 public void flush(void)
 {
-	int n;
+	size_t n;
 
-	n = (int) (ob - obuf);
+	n = ptr_diff(ob, obuf);
 	if (n == 0)
 		return;
 	ob = obuf;
@@ -475,8 +475,8 @@ TYPE_TO_A_FUNC(inttoa, int)
 /*
  * Convert a string to an integral type.  Return ((type) -1) on overflow.
  */
-#define STR_TO_TYPE_FUNC(funcname, type) \
-type funcname(char *buf, char **ebuf, int radix) \
+#define STR_TO_TYPE_FUNC(funcname, cfuncname, type) \
+type cfuncname(constant char *buf, constant char **ebuf, int radix) \
 { \
 	type val = 0; \
 	int v = 0; \
@@ -489,11 +489,18 @@ type funcname(char *buf, char **ebuf, int radix) \
 	} \
 	if (ebuf != NULL) *ebuf = buf; \
 	return v ? -1 : val; \
+} \
+type funcname(char *buf, char **ebuf, int radix) \
+{ \
+	constant char *cbuf = buf; \
+	type r = cfuncname(cbuf, &cbuf, radix); \
+	if (ebuf != NULL) *ebuf = (char *) cbuf; /*{{const-issue}}*/ \
+	return r; \
 }
 
-STR_TO_TYPE_FUNC(lstrtopos, POSITION)
-STR_TO_TYPE_FUNC(lstrtoi, int)
-STR_TO_TYPE_FUNC(lstrtoul, unsigned long)
+STR_TO_TYPE_FUNC(lstrtopos, lstrtoposc, POSITION)
+STR_TO_TYPE_FUNC(lstrtoi, lstrtoic, int)
+STR_TO_TYPE_FUNC(lstrtoul, lstrtoulc, unsigned long)
 
 /*
  * Print an integral type.
@@ -517,9 +524,9 @@ IPRINT_FUNC(iprint_linenum, LINENUM, linenumtoa)
  * {{ This paranoia about the portability of printf dates from experiences
  *    with systems in the 1980s and is of course no longer necessary. }}
  */
-public int less_printf(char *fmt, PARG *parg)
+public int less_printf(constant char *fmt, PARG *parg)
 {
-	char *s;
+	constant char *s;
 	int col;
 
 	col = 0;
@@ -596,7 +603,7 @@ public void get_return(void)
  * Output a message in the lower left corner of the screen
  * and wait for carriage return.
  */
-public void error(char *fmt, PARG *parg)
+public void error(constant char *fmt, PARG *parg)
 {
 	int col = 0;
 	static char return_to_continue[] = "  (press RETURN)";
@@ -642,7 +649,7 @@ public void error(char *fmt, PARG *parg)
  * Usually used to warn that we are beginning a potentially
  * time-consuming operation.
  */
-static void ierror_suffix(char *fmt, PARG *parg, char *suffix1, char *suffix2, char *suffix3)
+static void ierror_suffix(constant char *fmt, PARG *parg, constant char *suffix1, constant char *suffix2, constant char *suffix3)
 {
 	at_exit();
 	clear_bot();
@@ -656,12 +663,12 @@ static void ierror_suffix(char *fmt, PARG *parg, char *suffix1, char *suffix2, c
 	need_clr = 1;
 }
 
-public void ierror(char *fmt, PARG *parg)
+public void ierror(constant char *fmt, PARG *parg)
 {
 	ierror_suffix(fmt, parg, "... (interrupt to abort)", "", "");
 }
 
-public void ixerror(char *fmt, PARG *parg)
+public void ixerror(constant char *fmt, PARG *parg)
 {
 	if (!supports_ctrl_x())
 		ierror(fmt, parg);
@@ -674,7 +681,7 @@ public void ixerror(char *fmt, PARG *parg)
  * Output a message in the lower left corner of the screen
  * and return a single-character response.
  */
-public int query(char *fmt, PARG *parg)
+public int query(constant char *fmt, PARG *parg)
 {
 	int c;
 	int col = 0;

@@ -25,12 +25,12 @@
 #define MAX_PFX_WIDTH (MAX_LINENUM_WIDTH + MAX_STATUSCOL_WIDTH + 1)
 static struct {
 	char *buf;    /* Buffer which holds the current output line */
-	int *attr;   /* Parallel to buf, to hold attributes */
-	int print;    /* Index in buf of first printable char */
-	int end;      /* Number of chars in buf */
+	int *attr;    /* Parallel to buf, to hold attributes */
+	size_t print; /* Index in buf of first printable char */
+	size_t end;   /* Number of chars in buf */
 	char pfx[MAX_PFX_WIDTH]; /* Holds status column and line number */
 	int pfx_attr[MAX_PFX_WIDTH];
-	int pfx_end;  /* Number of chars in pfx */
+	size_t pfx_end;  /* Number of chars in pfx */
 } linebuf;
 
 /*
@@ -50,7 +50,7 @@ static struct xbuffer last_ansi;
 static struct xbuffer last_ansis[NUM_LAST_ANSIS];
 static int curr_last_ansi;
 
-public int size_linebuf = 0; /* Size of line buffer (and attr buffer) */
+public size_t size_linebuf = 0; /* Size of line buffer (and attr buffer) */
 static struct ansi_state *line_ansi = NULL;
 static int ansi_in_line;
 static int hlink_in_line;
@@ -71,13 +71,13 @@ static int last_overstrike = AT_NORMAL;
 static int is_null_line;  /* There is no current line */
 static LWCHAR pendc;
 static POSITION pendpos;
-static char *end_ansi_chars;
-static char *mid_ansi_chars;
+static constant char *end_ansi_chars;
+static constant char *mid_ansi_chars;
 static int in_hilite;
 
 static int attr_swidth(int a);
 static int attr_ewidth(int a);
-static int do_append(LWCHAR ch, char *rep, POSITION pos);
+static int do_append(LWCHAR ch, constant char *rep, POSITION pos);
 
 extern int sigs;
 extern int bs_mode;
@@ -108,7 +108,7 @@ static char mbc_buf[MAX_UTF_CHAR_LEN];
 static int mbc_buf_len = 0;
 static int mbc_buf_index = 0;
 static POSITION mbc_pos;
-static int saved_line_end;
+static size_t saved_line_end;
 static int saved_end_column;
 
 /* Configurable color map */
@@ -173,7 +173,7 @@ public void init_line(void)
 static int expand_linebuf(void)
 {
 	/* Double the size of the line buffer. */
-	int new_size = size_linebuf * 2;
+	size_t new_size = size_linebuf * 2;
 	char *new_buf = (char *) calloc(new_size, sizeof(char));
 	int *new_attr = (int *) calloc(new_size, sizeof(int));
 	if (new_buf == NULL || new_attr == NULL)
@@ -212,7 +212,7 @@ static void inc_end_column(int w)
 	if (end_column > right_column && w > 0)
 	{
 		right_column = end_column;
-		right_curr = linebuf.end;
+		right_curr = (int) linebuf.end;
 	}
 	end_column += w;
 }
@@ -261,7 +261,7 @@ public void prewind(void)
 /*
  * Set a character in the line buffer.
  */
-static void set_linebuf(int n, char ch, int attr)
+static void set_linebuf(size_t n, char ch, int attr)
 {
 	if (n >= size_linebuf)
 	{
@@ -288,7 +288,7 @@ static void add_linebuf(char ch, int attr, int w)
 /*
  * Append a string to the line buffer.
  */
-static void addstr_linebuf(char *s, int attr, int cw)
+static void addstr_linebuf(constant char *s, int attr, int cw)
 {
 	for ( ;  *s != '\0';  s++)
 		add_linebuf(*s, attr, cw);
@@ -297,7 +297,7 @@ static void addstr_linebuf(char *s, int attr, int cw)
 /*
  * Set a character in the line prefix buffer.
  */
-static void set_pfx(int n, char ch, int attr)
+static void set_pfx(size_t n, char ch, int attr)
 {
 	linebuf.pfx[n] = ch;
 	linebuf.pfx_attr[n] = attr;
@@ -317,7 +317,7 @@ static void add_pfx(char ch, int attr)
 public void plinestart(POSITION pos)
 {
 	LINENUM linenum = 0;
-	int i;
+	size_t i;
 
 	if (linenums == OPT_ONPLUS)
 	{
@@ -346,7 +346,7 @@ public void plinestart(POSITION pos)
 		if (status_col)
 		{
 			add_pfx(c ? c : ' ', line_mark_attr); /* column 0: status */
-			while (linebuf.pfx_end < status_col_width)
+			while (linebuf.pfx_end < (size_t) status_col_width) /*{{type-issue}}*/
 				add_pfx(' ', AT_NORMAL);
 		}
 	}
@@ -358,7 +358,7 @@ public void plinestart(POSITION pos)
 	if (linenums == OPT_ONPLUS)
 	{
 		char buf[INT_STRLEN_BOUND(linenum) + 2];
-		int len;
+		size_t len;
 
 		linenum = vlinenum(linenum);
 		if (linenum == 0)
@@ -366,7 +366,7 @@ public void plinestart(POSITION pos)
 		else
 		{
 			linenumtoa(linenum, buf, 10);
-			len = (int) strlen(buf);
+			len = strlen(buf);
 		}
 		for (i = 0; i < linenum_width - len; i++)
 			add_pfx(' ', AT_NORMAL);
@@ -374,20 +374,20 @@ public void plinestart(POSITION pos)
 			add_pfx(buf[i], AT_BOLD|AT_COLOR_LINENUM);
 		add_pfx(' ', AT_NORMAL);
 	}
-	end_column = linebuf.pfx_end;
+	end_column = (int) linebuf.pfx_end; /*{{type-issue}}*/
 }
 
 /*
  * Return the width of the line prefix (status column and line number).
  * {{ Actual line number can be wider than linenum_width. }}
  */
-public int line_pfx_width(void)
+public size_t line_pfx_width(void)
 {
-	int width = 0;
+	size_t width = 0;
 	if (status_col)
-		width += status_col_width;
+		width += (size_t) status_col_width; /*{{type-issue}}*/
 	if (linenums == OPT_ONPLUS)
-		width += linenum_width + 1;
+		width += (size_t) linenum_width + 1; /*{{type-issue}}*/
 	return width;
 }
 
@@ -397,12 +397,12 @@ public int line_pfx_width(void)
  */
 public void pshift_all(void)
 {
-	int i;
+	size_t i;
 	for (i = linebuf.print;  i < linebuf.end;  i++)
 		if (linebuf.attr[i] == AT_ANSI)
-			xbuf_add_byte(&shifted_ansi, (unsigned char) linebuf.buf[i]);
+			xbuf_add_char(&shifted_ansi, linebuf.buf[i]);
 	linebuf.end = linebuf.print;
-	end_column = linebuf.pfx_end;
+	end_column = (int) linebuf.pfx_end; /*{{type-issue}}*/
 }
 
 /*
@@ -465,7 +465,7 @@ public int pwidth(LWCHAR ch, int a, LWCHAR prev_ch, int prev_a)
 		 * Backspace moves backwards one or two positions.
 		 */
 		if (prev_a & (AT_ANSI|AT_BINARY))
-			return strlen(prchar('\b'));
+			return (int) strlen(prchar('\b')); /*{{type-issue}}*/
 		return (utf_mode && is_wide_char(prev_ch)) ? -2 : -1;
 	}
 
@@ -531,7 +531,7 @@ static int backc(void)
 	{
 		LWCHAR prev_ch;
 		int width;
-		linebuf.end = (int) (p - linebuf.buf);
+		linebuf.end = ptr_diff(p, linebuf.buf);
 		prev_ch = step_char(&p, -1, linebuf.buf);
 		width = pwidth(ch, linebuf.attr[linebuf.end], prev_ch, linebuf.attr[linebuf.end-1]);
 		end_column -= width;
@@ -587,11 +587,11 @@ public int is_ansi_middle(LWCHAR ch)
  * Skip past an ANSI escape sequence.
  * pp is initially positioned just after the CSI_START char.
  */
-public void skip_ansi(struct ansi_state *pansi, char **pp, constant char *limit)
+public void skip_ansi(struct ansi_state *pansi, constant char **pp, constant char *limit)
 {
 	LWCHAR c;
 	do {
-		c = step_char(pp, +1, limit);
+		c = step_charc(pp, +1, limit);
 	} while (*pp < limit && ansi_step(pansi, c) == ANSI_MID);
 	/* Note that we discard final char, for which is_ansi_end is true. */
 }
@@ -677,16 +677,17 @@ static int fits_on_screen(int w, int a)
 		if (store_char((ch),(a),(rep),(pos))) return (1); \
 	} while (0)
 
-static int store_char(LWCHAR ch, int a, char *rep, POSITION pos)
+static int store_char(LWCHAR ch, int a, constant char *rep, POSITION pos)
 {
 	int w;
-	int i;
-	int replen;
+	size_t i;
+	size_t replen;
 	char cs;
+	int ov;
 
-	i = (a & (AT_UNDERLINE|AT_BOLD));
-	if (i != AT_NORMAL)
-		last_overstrike = i;
+	ov = (a & (AT_UNDERLINE|AT_BOLD));
+	if (ov != AT_NORMAL)
+		last_overstrike = ov;
 
 #if HILITE_SEARCH
 	{
@@ -783,11 +784,11 @@ static int store_char(LWCHAR ch, int a, char *rep, POSITION pos)
 	{
 		/* We haven't left-shifted enough yet. */
 		if (a == AT_ANSI)
-			xbuf_add_byte(&shifted_ansi, (unsigned char) ch); /* Save ANSI attributes */
+			xbuf_add_char(&shifted_ansi, (char) ch); /* Save ANSI attributes */
 		if (linebuf.end > linebuf.print)
 		{
 			/* Shift left enough to put last byte of this char at print-1. */
-			int i;
+			size_t i;
 			for (i = 0; i < linebuf.print; i++)
 			{
 				linebuf.buf[i] = linebuf.buf[i+replen];
@@ -813,7 +814,7 @@ static int store_char(LWCHAR ch, int a, char *rep, POSITION pos)
 #define STORE_STRING(s,a,pos) \
 	do { if (store_string((s),(a),(pos))) return (1); } while (0)
 
-static int store_string(char *s, int a, POSITION pos)
+static int store_string(constant char *s, int a, POSITION pos)
 {
 	if (!fits_on_screen(strlen(s), a))
 		return 1;
@@ -831,7 +832,7 @@ static int store_string(char *s, int a, POSITION pos)
 
 static int store_tab(int attr, POSITION pos)
 {
-	int to_tab = end_column - linebuf.pfx_end;
+	int to_tab = end_column - (int) linebuf.pfx_end; /*{{type-issue}}*/
 
 	if (ntabstops < 2 || to_tab >= tabstops[ntabstops-1])
 		to_tab = tabdefault -
@@ -968,7 +969,7 @@ public int pappend(int c, POSITION pos)
 	return (r);
 }
 
-static int store_control_char(LWCHAR ch, char *rep, POSITION pos)
+static int store_control_char(LWCHAR ch, constant char *rep, POSITION pos)
 {
 	if (ctldisp == OPT_ON)
 	{
@@ -982,7 +983,7 @@ static int store_control_char(LWCHAR ch, char *rep, POSITION pos)
 	return (0);
 }
 
-static int store_ansi(LWCHAR ch, char *rep, POSITION pos)
+static int store_ansi(LWCHAR ch, constant char *rep, POSITION pos)
 {
 	switch (ansi_step(line_ansi, ch))
 	{
@@ -990,13 +991,13 @@ static int store_ansi(LWCHAR ch, char *rep, POSITION pos)
 		STORE_CHAR(ch, AT_ANSI, rep, pos);
 		if (line_ansi->hlink)
 			hlink_in_line = 1;
-		xbuf_add_byte(&last_ansi, (unsigned char) ch);
+		xbuf_add_char(&last_ansi, (char) ch);
 		break;
 	case ANSI_END:
 		STORE_CHAR(ch, AT_ANSI, rep, pos);
 		ansi_done(line_ansi);
 		line_ansi = NULL;
-		xbuf_add_byte(&last_ansi, (unsigned char) ch);
+		xbuf_add_char(&last_ansi, (char) ch);
 		xbuf_set(&last_ansis[curr_last_ansi], &last_ansi);
 		xbuf_reset(&last_ansi);
 		curr_last_ansi = (curr_last_ansi + 1) % NUM_LAST_ANSIS;
@@ -1004,14 +1005,14 @@ static int store_ansi(LWCHAR ch, char *rep, POSITION pos)
 	case ANSI_ERR:
 		{
 			/* Remove whole unrecognized sequence.  */
-			char *start = (cshift < hshift) ? xbuf_char_data(&shifted_ansi): linebuf.buf;
-			int *end = (cshift < hshift) ? &shifted_ansi.end : &linebuf.end;
-			char *p = start + *end;
+			constant char *start = (cshift < hshift) ? xbuf_char_data(&shifted_ansi): linebuf.buf;
+			size_t *end = (cshift < hshift) ? &shifted_ansi.end : &linebuf.end;
+			constant char *p = start + *end;
 			LWCHAR bch;
 			do {
-				bch = step_char(&p, -1, start);
+				bch = step_charc(&p, -1, start);
 			} while (p > start && !IS_CSI_START(bch));
-			*end = (int) (p - start);
+			*end = ptr_diff(p, start);
 		}
 		xbuf_reset(&last_ansi);
 		ansi_done(line_ansi);
@@ -1021,7 +1022,7 @@ static int store_ansi(LWCHAR ch, char *rep, POSITION pos)
 	return (0);
 } 
 
-static int store_bs(LWCHAR ch, char *rep, POSITION pos)
+static int store_bs(LWCHAR ch, constant char *rep, POSITION pos)
 {
 	if (proc_backspace == OPT_ONPLUS || (bs_mode == BS_CONTROL && proc_backspace == OPT_OFF))
 		return store_control_char(ch, rep, pos);
@@ -1036,7 +1037,7 @@ static int store_bs(LWCHAR ch, char *rep, POSITION pos)
 	return 0;
 }
 
-static int do_append(LWCHAR ch, char *rep, POSITION pos)
+static int do_append(LWCHAR ch, constant char *rep, POSITION pos)
 {
 	int a = AT_NORMAL;
 	int in_overstrike = overstrike;
@@ -1191,7 +1192,7 @@ public void pdone(int endline, int chopped, int forw)
 		{
 			/* We've already written in the rightmost char. */
 			end_column = right_column;
-			linebuf.end = right_curr;
+			linebuf.end = (size_t) right_curr;
 		}
 		add_attr_normal();
 		while (end_column < sc_width-1 + cshift) 
@@ -1262,7 +1263,7 @@ public void pdone(int endline, int chopped, int forw)
  */
 public void set_attr_line(int a)
 {
-	int i;
+	size_t i;
 
 	for (i = linebuf.print;  i < linebuf.end;  i++)
 		if ((linebuf.attr[i] & AT_COLOR) == 0 || (a & AT_COLOR) == 0)
@@ -1282,7 +1283,7 @@ public void set_status_col(char c, int attr)
  * Return the character as the function return value,
  * and the character attribute in *ap.
  */
-public int gline(int i, int *ap)
+public int gline(size_t i, int *ap)
 {
 	if (is_null_line)
 	{
@@ -1328,9 +1329,9 @@ public void null_line(void)
  * lines which are not split for screen width.
  * {{ This is supposed to be more efficient than forw_line(). }}
  */
-public POSITION forw_raw_line_len(POSITION curr_pos, int read_len, char **linep, int *line_lenp)
+public POSITION forw_raw_line_len(POSITION curr_pos, ssize_t read_len, constant char **linep, size_t *line_lenp)
 {
-	int n;
+	size_t n;
 	int c;
 	POSITION new_pos;
 
@@ -1359,7 +1360,7 @@ public POSITION forw_raw_line_len(POSITION curr_pos, int read_len, char **linep,
 			}
 		}
 		linebuf.buf[n++] = c;
-		if (read_len >= 0 && n >= read_len)
+		if (read_len >= 0 && n >= (size_t) read_len)
 		{
 			new_pos = ch_tell();
 			break;
@@ -1374,7 +1375,7 @@ public POSITION forw_raw_line_len(POSITION curr_pos, int read_len, char **linep,
 	return (new_pos);
 }
 
-public POSITION forw_raw_line(POSITION curr_pos, char **linep, int *line_lenp)
+public POSITION forw_raw_line(POSITION curr_pos, constant char **linep, size_t *line_lenp)
 {
 	return forw_raw_line_len(curr_pos, -1, linep, line_lenp);
 }
@@ -1383,9 +1384,9 @@ public POSITION forw_raw_line(POSITION curr_pos, char **linep, int *line_lenp)
  * Analogous to back_line(), but deals with "raw lines".
  * {{ This is supposed to be more efficient than back_line(). }}
  */
-public POSITION back_raw_line(POSITION curr_pos, char **linep, int *line_lenp)
+public POSITION back_raw_line(POSITION curr_pos, constant char **linep, size_t *line_lenp)
 {
-	int n;
+	size_t n;
 	int c;
 	POSITION new_pos;
 
@@ -1419,7 +1420,7 @@ public POSITION back_raw_line(POSITION curr_pos, char **linep, int *line_lenp)
 		}
 		if (n <= 0)
 		{
-			int old_size_linebuf = size_linebuf;
+			size_t old_size_linebuf = size_linebuf;
 			char *fm;
 			char *to;
 			if (expand_linebuf())
@@ -1453,16 +1454,16 @@ public POSITION back_raw_line(POSITION curr_pos, char **linep, int *line_lenp)
  * Skip cols printable columns at the start of line.
  * Return number of bytes skipped.
  */
-public int skip_columns(int cols, char **linep, int *line_lenp)
+public int skip_columns(int cols, constant char **linep, size_t *line_lenp)
 {
-	char *line = *linep;
-	char *eline = line + *line_lenp;
+	constant char *line = *linep;
+	constant char *eline = line + *line_lenp;
 	LWCHAR pch = 0;
-	int bytes;
+	size_t bytes;
 
 	while (cols > 0 && line < eline)
 	{
-		LWCHAR ch = step_char(&line, +1, eline);
+		LWCHAR ch = step_charc(&line, +1, eline);
 		struct ansi_state *pansi = ansi_start(ch);
 		if (pansi != NULL)
 		{
@@ -1476,10 +1477,10 @@ public int skip_columns(int cols, char **linep, int *line_lenp)
 			pch = ch;
 		}
 	}
-	bytes = line - *linep;
+	bytes = ptr_diff(line, *linep);
 	*linep = line;
 	*line_lenp -= bytes;
-	return (bytes);
+	return (int) bytes; /*{{type-issue}}*/
 }
 
 /*
@@ -1579,7 +1580,7 @@ static int color_index(int attr)
 /*
  * Set the color string to use for a given attribute.
  */
-public int set_color_map(int attr, char *colorstr)
+public int set_color_map(int attr, constant char *colorstr)
 {
 	int cx = color_index(attr);
 	if (cx < 0)
@@ -1595,7 +1596,7 @@ public int set_color_map(int attr, char *colorstr)
 /*
  * Get the color string to use for a given attribute.
  */
-public char * get_color_map(int attr)
+public constant char * get_color_map(int attr)
 {
 	int cx = color_index(attr);
 	if (cx < 0)

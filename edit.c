@@ -59,14 +59,14 @@ public ino_t curr_ino;
  * words, returning each one as a standard null-terminated string.
  * back_textlist does the same, but runs thru the list backwards.
  */
-public void init_textlist(struct textlist *tlist, char *str)
+public void init_textlist(struct textlist *tlist, mutable char *str)
 {
 	char *s;
 #if SPACES_IN_FILENAMES
 	int meta_quoted = 0;
 	int delim_quoted = 0;
-	char *esc = get_meta_escape();
-	int esclen = (int) strlen(esc);
+	constant char *esc = get_meta_escape();
+	size_t esclen = strlen(esc);
 #endif
 	
 	tlist->string = skipsp(str);
@@ -100,9 +100,9 @@ public void init_textlist(struct textlist *tlist, char *str)
 	}
 }
 
-public char * forw_textlist(struct textlist *tlist, char *prev)
+public constant char * forw_textlist(struct textlist *tlist, constant char *prev)
 {
-	char *s;
+	constant char *s;
 	
 	/*
 	 * prev == NULL means return the first word in the list.
@@ -121,9 +121,9 @@ public char * forw_textlist(struct textlist *tlist, char *prev)
 	return (s);
 }
 
-public char * back_textlist(struct textlist *tlist, char *prev)
+public constant char * back_textlist(struct textlist *tlist, constant char *prev)
 {
-	char *s;
+	constant char *s;
 	
 	/*
 	 * prev == NULL means return the last word in the list.
@@ -147,9 +147,9 @@ public char * back_textlist(struct textlist *tlist, char *prev)
 /*
  * Parse a single option setting in a modeline.
  */
-static void modeline_option(char *str, int opt_len)
+static void modeline_option(constant char *str, size_t opt_len)
 {
-	struct mloption { char *opt_name; void (*opt_func)(char*,int); };
+	struct mloption { constant char *opt_name; void (*opt_func)(constant char*,size_t); };
 	struct mloption options[] = {
 		{ "ts=",         set_tabs },
 		{ "tabstop=",    set_tabs },
@@ -158,7 +158,7 @@ static void modeline_option(char *str, int opt_len)
 	struct mloption *opt;
 	for (opt = options;  opt->opt_name != NULL;  opt++)
 	{
-		int name_len = strlen(opt->opt_name);
+		size_t name_len = strlen(opt->opt_name);
 		if (opt_len > name_len && strncmp(str, opt->opt_name, name_len) == 0)
 		{
 			(*opt->opt_func)(str + name_len, opt_len - name_len);
@@ -171,10 +171,10 @@ static void modeline_option(char *str, int opt_len)
  * String length, terminated by option separator (space or colon).
  * Space/colon can be escaped with backspace.
  */
-static int modeline_option_len(char *str)
+static size_t modeline_option_len(constant char *str)
 {
 	int esc = FALSE;
-	char *s;
+	constant char *s;
 	for (s = str;  *s != '\0';  s++)
 	{
 		if (esc)
@@ -184,18 +184,18 @@ static int modeline_option_len(char *str)
 		else if (*s == ' ' || *s == ':') /* separator */
 			break;
 	}
-	return (s - str);
+	return ptr_diff(s, str);
 }
 
 /*
  * Parse colon- or space-separated option settings in a modeline.
  */
-static void modeline_options(char *str, char end_char)
+static void modeline_options(constant char *str, char end_char)
 {
 	for (;;)
 	{
-		int opt_len;
-		str = skipsp(str);
+		size_t opt_len;
+		str = skipspc(str);
 		if (*str == '\0' || *str == end_char)
 			break;
 		opt_len = modeline_option_len(str);
@@ -209,21 +209,21 @@ static void modeline_options(char *str, char end_char)
 /*
  * See if there is a modeline string in a line.
  */
-static void check_modeline(char *line)
+static void check_modeline(constant char *line)
 {
 #if HAVE_STRSTR
-	static char *pgms[] = { "less:", "vim:", "vi:", "ex:", NULL };
-	char **pgm;
+	static constant char *pgms[] = { "less:", "vim:", "vi:", "ex:", NULL };
+	constant char **pgm;
 	for (pgm = pgms;  *pgm != NULL;  ++pgm)
 	{
-		char *pline = line;
+		constant char *pline = line;
 		for (;;)
 		{
-			char *str;
+			constant char *str;
 			pline = strstr(pline, *pgm);
 			if (pline == NULL) /* pgm is not in this line */
 				break;
-			str = skipsp(pline + strlen(*pgm));
+			str = skipspc(pline + strlen(*pgm));
 			if (pline == line || pline[-1] == ' ')
 			{
 				if (strncmp(str, "set ", 4) == 0)
@@ -248,8 +248,8 @@ static void check_modelines(void)
 	int i;
 	for (i = 0;  i < modelines;  i++)
 	{
-		char *line;
-		int line_len;
+		constant char *line;
+		size_t line_len;
 		if (ABORT_SIGS())
 			return;
 		pos = forw_raw_line(pos, &line, &line_len);
@@ -265,6 +265,7 @@ static void check_modelines(void)
 static void close_pipe(FILE *pipefd)
 {
 	int status;
+	char *p;
 	PARG parg;
 
 	if (pipefd == NULL)
@@ -280,9 +281,10 @@ static void close_pipe(FILE *pipefd)
 	if (status == -1)
 	{
 		/* An internal error in 'less', not a preprocessor error.  */
-		parg.p_string = errno_message("pclose");
+		p = errno_message("pclose");
+		parg.p_string = p;
 		error("%s", &parg);
-		free(parg.p_string);
+		free(p);
 		return;
 	}
 	if (!show_preproc_error)
@@ -349,7 +351,7 @@ public void check_altpipe_error(void)
 static void close_file(void)
 {
 	struct scrpos scrpos;
-	char *altfilename;
+	constant char *altfilename;
 	
 	if (curr_ifile == NULL_IFILE)
 		return;
@@ -390,7 +392,7 @@ static void close_file(void)
  * Filename == "-" means standard input.
  * Filename == NULL means just close the current file.
  */
-public int edit(char *filename)
+public int edit(constant char *filename)
 {
 	if (filename == NULL)
 		return (edit_ifile(NULL_IFILE));
@@ -400,13 +402,13 @@ public int edit(char *filename)
 /*
  * Clean up what edit_ifile did before error return.
  */
-static int edit_error(char *filename, char *alt_filename, void *altpipe, IFILE ifile)
+static int edit_error(constant char *filename, constant char *alt_filename, void *altpipe, IFILE ifile)
 {
 	if (alt_filename != NULL)
 	{
 		close_pipe(altpipe);
 		close_altfile(alt_filename, filename);
-		free(alt_filename);
+		free((char*)alt_filename); /* FIXME: WTF? */
 	}
 	del_ifile(ifile);
 	/*
@@ -432,11 +434,12 @@ public int edit_ifile(IFILE ifile)
 	int f;
 	int answer;
 	int chflags;
-	char *filename;
-	char *open_filename;
+	constant char *filename;
+	constant char *open_filename;
 	char *alt_filename;
 	void *altpipe;
 	IFILE was_curr_ifile;
+	char *p;
 	PARG parg;
 
 	if (ifile == curr_ifile)
@@ -518,22 +521,24 @@ public int edit_ifile(IFILE ifile)
 			{
 				f = -1;
 				chflags |= CH_HELPFILE;
-			} else if ((parg.p_string = bad_file(open_filename)) != NULL)
+			} else if ((p = bad_file(open_filename)) != NULL)
 			{
 				/*
 				 * It looks like a bad file.  Don't try to open it.
 				 */
+				parg.p_string = p;
 				error("%s", &parg);
-				free(parg.p_string);
+				free(p);
 				return edit_error(filename, alt_filename, altpipe, ifile);
 			} else if ((f = open(open_filename, OPEN_READ)) < 0)
 			{
 				/*
 				 * Got an error trying to open it.
 				 */
-				parg.p_string = errno_message(filename);
+				char *p = errno_message(filename);
+				parg.p_string = p;
 				error("%s", &parg);
-				free(parg.p_string);
+				free(p);
 				return edit_error(filename, alt_filename, altpipe, ifile);
 			} else 
 			{
@@ -672,10 +677,10 @@ public int edit_ifile(IFILE ifile)
 public int edit_list(char *filelist)
 {
 	IFILE save_ifile;
-	char *good_filename;
-	char *filename;
+	constant char *good_filename;
+	constant char *filename;
 	char *gfilelist;
-	char *gfilename;
+	constant char *gfilename;
 	char *qfilename;
 	struct textlist tl_files;
 	struct textlist tl_gfiles;
@@ -919,7 +924,7 @@ public void cat_file(void)
  * is standard input, create the log file.  
  * We take care not to blindly overwrite an existing file.
  */
-public void use_logfile(char *filename)
+public void use_logfile(constant char *filename)
 {
 	int exists;
 	int answer;

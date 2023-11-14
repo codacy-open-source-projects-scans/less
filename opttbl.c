@@ -744,7 +744,7 @@ static struct loption option[] =
 public void init_option(void)
 {
 	struct loption *o;
-	char *p;
+	constant char *p;
 
 	p = lgetenv("LESS_IS_MORE");
 	if (!isnullenv(p))
@@ -799,16 +799,16 @@ static int is_optchar(char c)
  * is updated to point after the matched name.
  * p_oname if non-NULL is set to point to the full option name.
  */
-public struct loption * findopt_name(char **p_optname, char **p_oname, int *p_err)
+public struct loption * findopt_name(constant char **p_optname, constant char **p_oname, int *p_err)
 {
-	char *optname = *p_optname;
+	constant char *optname = *p_optname;
 	struct loption *o;
 	struct optname *oname;
-	int len;
+	size_t len;
 	int uppercase;
 	struct loption *maxo = NULL;
 	struct optname *maxoname = NULL;
-	int maxlen = 0;
+	size_t maxlen = 0;
 	int ambig = 0;
 	int exact = 0;
 
@@ -830,7 +830,7 @@ public struct loption * findopt_name(char **p_optname, char **p_oname, int *p_er
 			for (uppercase = 0;  uppercase <= 1;  uppercase++)
 			{
 				len = sprefix(optname, oname->oname, uppercase);
-				if (len <= 0 || is_optchar(optname[len]))
+				if (len == 0 || is_optchar(optname[len]))
 				{
 					/*
 					 * We didn't use all of the option name.

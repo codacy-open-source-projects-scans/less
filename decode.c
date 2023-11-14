@@ -37,7 +37,9 @@ extern int erase_char, erase2_char, kill_char;
 extern int mousecap;
 extern int sc_height;
 
-static void add_content_table(int (*call_lesskey)(char *, int), char *envname, int sysvar);
+/* "content" is lesskey source, never binary. */
+static void add_content_table(int (*call_lesskey)(constant char *, int), constant char *envname, int sysvar);
+static int add_hometable(int (*call_lesskey)(constant char *, int), constant char *envname, constant char *def_filename, int sysvar);
 
 #define SK(k) \
 	SK_SPECIAL_KEY, (k), 6, 1, 1, 1
@@ -227,8 +229,8 @@ static unsigned char edittable[] =
 struct tablelist
 {
 	struct tablelist *t_next;
-	char *t_start;
-	char *t_end;
+	unsigned char *t_start;
+	unsigned char *t_end;
 };
 
 /*
@@ -243,13 +245,13 @@ static struct tablelist *list_sysvar_tables = NULL;
 /*
  * Expand special key abbreviations in a command table.
  */
-static void expand_special_keys(char *table, int len)
+static void expand_special_keys(unsigned char *table, size_t len)
 {
-	char *fm;
-	char *to;
+	unsigned char *fm;
+	unsigned char *to;
 	int a;
-	char *repl;
-	int klen;
+	constant char *repl;
+	size_t klen;
 
 	for (fm = table;  fm < table + len; )
 	{
@@ -276,7 +278,7 @@ static void expand_special_keys(char *table, int len)
 			repl = special_key_str(fm[1]);
 			klen = fm[2] & 0377;
 			fm += klen;
-			if (repl == NULL || (int) strlen(repl) > klen)
+			if (repl == NULL || strlen(repl) > klen)
 				repl = "\377";
 			while (*repl != '\0')
 				*to++ = *repl++;
@@ -306,7 +308,7 @@ static void expand_cmd_table(struct tablelist *tlist)
 	struct tablelist *t;
 	for (t = tlist;  t != NULL;  t = t->t_next)
 	{
-		expand_special_keys(t->t_start, t->t_end - t->t_start);
+		expand_special_keys(t->t_start, ptr_diff(t->t_end, t->t_start));
 	}
 }
 
@@ -329,8 +331,8 @@ public void init_cmds(void)
 	/*
 	 * Add the default command tables.
 	 */
-	add_fcmd_table((char*)cmdtable, sizeof(cmdtable));
-	add_ecmd_table((char*)edittable, sizeof(edittable));
+	add_fcmd_table(cmdtable, sizeof(cmdtable));
+	add_ecmd_table(edittable, sizeof(edittable));
 #if USERFILE
 #ifdef BINDIR /* For backwards compatibility */
 	/* Try to add tables in the OLD system lesskey file. */
@@ -376,7 +378,7 @@ public void init_cmds(void)
 /*
  * Add a command table.
  */
-static int add_cmd_table(struct tablelist **tlist, char *buf, int len)
+static int add_cmd_table(struct tablelist **tlist, unsigned char *buf, size_t len)
 {
 	struct tablelist *t;
 
@@ -432,7 +434,7 @@ static void pop_cmd_table(struct tablelist **tlist)
 /*
  * Add a command table.
  */
-public void add_fcmd_table(char *buf, int len)
+public void add_fcmd_table(unsigned char *buf, size_t len)
 {
 	if (add_cmd_table(&list_fcmd_tables, buf, len) < 0)
 		error("Warning: some commands disabled", NULL_PARG);
@@ -441,7 +443,7 @@ public void add_fcmd_table(char *buf, int len)
 /*
  * Add an editing command table.
  */
-public void add_ecmd_table(char *buf, int len)
+public void add_ecmd_table(unsigned char *buf, size_t len)
 {
 	if (add_cmd_table(&list_ecmd_tables, buf, len) < 0)
 		error("Warning: some edit commands disabled", NULL_PARG);
@@ -450,13 +452,14 @@ public void add_ecmd_table(char *buf, int len)
 /*
  * Add an environment variable table.
  */
-static void add_var_table(struct tablelist **tlist, char *buf, int len)
+static void add_var_table(struct tablelist **tlist, unsigned char *buf, size_t len)
 {
 	struct xbuffer xbuf;
 
 	xbuf_init(&xbuf);
-	expand_evars(buf, len, &xbuf);
-	if (add_cmd_table(tlist, xbuf_char_data(&xbuf), xbuf.end) < 0)
+	expand_evars((char*)buf, len, &xbuf); /*{{unsigned-issue}}*/
+	/* {{ We leak the table in buf. expand_evars scribbled in it so it's useless anyway. }} */
+	if (add_cmd_table(tlist, xbuf.data, xbuf.end) < 0)
 		error("Warning: environment variables from lesskey file unavailable", NULL_PARG);
 }
 
@@ -513,13 +516,13 @@ static int mouse_button_right(int x, int y)
 /*
  * Read a decimal integer. Return the integer and set *pterm to the terminating char.
  */
-static int getcc_int(char *pterm)
+static int getcc_int(LWCHAR *pterm)
 {
 	int num = 0;
 	int digits = 0;
 	for (;;)
 	{
-		char ch = getcc();
+		LWCHAR ch = getcc();
 		if (ch < '0' || ch > '9')
 		{
 			if (pterm != NULL) *pterm = ch;
@@ -573,7 +576,7 @@ static int x11mouse_action(int skip)
  */
 static int x116mouse_action(int skip)
 {
-	char ch;
+	LWCHAR ch;
 	int x, y;
 	int b = getcc_int(&ch);
 	if (b < 0 || ch != ';') return (A_NOACTION);
@@ -601,10 +604,10 @@ static int x116mouse_action(int skip)
 /*
  * Search a single command table for the command string in cmd.
  */
-static int cmd_search(char *cmd, char *table, char *endtable, char **sp)
+static int cmd_search(constant char *cmd, constant char *table, constant char *endtable, constant char **sp)
 {
-	char *p;
-	char *q;
+	constant char *p;
+	constant char *q;
 	int a = A_INVALID;
 
 	*sp = NULL;
@@ -691,7 +694,7 @@ static int cmd_search(char *cmd, char *table, char *endtable, char **sp)
  * Decode a command character and return the associated action.
  * The "extra" string, if any, is returned in sp.
  */
-static int cmd_decode(struct tablelist *tlist, char *cmd, char **sp)
+static int cmd_decode(struct tablelist *tlist, constant char *cmd, constant char **sp)
 {
 	struct tablelist *t;
 	int action = A_INVALID;
@@ -703,8 +706,8 @@ static int cmd_decode(struct tablelist *tlist, char *cmd, char **sp)
 	*sp = NULL;
 	for (t = tlist;  t != NULL;  t = t->t_next)
 	{
-		char *tsp;
-		int taction = cmd_search(cmd, t->t_start, t->t_end, &tsp);
+		constant char *tsp;
+		int taction = cmd_search(cmd, (char *) t->t_start, (char *) t->t_end, &tsp);
 		if (taction == A_UINVALID)
 			taction = A_INVALID;
 		if (taction != A_INVALID)
@@ -719,7 +722,7 @@ static int cmd_decode(struct tablelist *tlist, char *cmd, char **sp)
 /*
  * Decode a command from the cmdtables list.
  */
-public int fcmd_decode(char *cmd, char **sp)
+public int fcmd_decode(constant char *cmd, constant char **sp)
 {
 	return (cmd_decode(list_fcmd_tables, cmd, sp));
 }
@@ -727,7 +730,7 @@ public int fcmd_decode(char *cmd, char **sp)
 /*
  * Decode a command from the edittables list.
  */
-public int ecmd_decode(char *cmd, char **sp)
+public int ecmd_decode(constant char *cmd, constant char **sp)
 {
 	return (cmd_decode(list_ecmd_tables, cmd, sp));
 }
@@ -736,10 +739,10 @@ public int ecmd_decode(char *cmd, char **sp)
  * Get the value of an environment variable.
  * Looks first in the lesskey file, then in the real environment.
  */
-public char * lgetenv(char *var)
+public constant char * lgetenv(constant char *var)
 {
 	int a;
-	char *s;
+	constant char *s;
 
 	a = cmd_decode(list_var_tables, var, &s);
 	if (a == EV_OK)
@@ -756,11 +759,11 @@ public char * lgetenv(char *var)
 /*
  * Like lgetenv, but also uses a buffer partially filled with an env table.
  */
-public char * lgetenv_ext(char *var, char *env_buf, int env_buf_len)
+public constant char * lgetenv_ext(constant char *var, unsigned char *env_buf, size_t env_buf_len)
 {
-	char *r;
-	int e;
-	int env_end = 0;
+	constant char *r;
+	size_t e;
+	size_t env_end = 0;
 
 	for (e = 0;;)
 	{
@@ -788,7 +791,7 @@ public char * lgetenv_ext(char *var, char *env_buf, int env_buf_len)
 /*
  * Is a string null or empty? 
  */
-public int isnullenv(char *s)
+public int isnullenv(constant char *s)
 {
 	return (s == NULL || *s == '\0');
 }
@@ -799,9 +802,9 @@ public int isnullenv(char *s)
  * Integers are stored in a funny format: 
  * two bytes, low order first, in radix KRADIX.
  */
-static int gint(char **sp)
+static size_t gint(unsigned char **sp)
 {
-	int n;
+	size_t n;
 
 	n = *(*sp)++;
 	n += *(*sp)++ * KRADIX;
@@ -811,7 +814,7 @@ static int gint(char **sp)
 /*
  * Process an old (pre-v241) lesskey file.
  */
-static int old_lesskey(char *buf, int len)
+static int old_lesskey(unsigned char *buf, size_t len)
 {
 	/*
 	 * Old-style lesskey file.
@@ -829,12 +832,12 @@ static int old_lesskey(char *buf, int len)
 /* 
  * Process a new (post-v241) lesskey file.
  */
-static int new_lesskey(char *buf, int len, int sysvar)
+static int new_lesskey(unsigned char *buf, size_t len, int sysvar)
 {
-	char *p;
-	char *end;
+	unsigned char *p;
+	unsigned char *end;
 	int c;
-	int n;
+	size_t n;
 
 	/*
 	 * New-style lesskey file.
@@ -887,11 +890,11 @@ static int new_lesskey(char *buf, int len, int sysvar)
 /*
  * Set up a user command table, based on a "lesskey" file.
  */
-public int lesskey(char *filename, int sysvar)
+public int lesskey(constant char *filename, int sysvar)
 {
-	char *buf;
+	unsigned char *buf;
 	POSITION len;
-	long n;
+	ssize_t n;
 	int f;
 
 	if (!secure_allow(SF_LESSKEY))
@@ -920,7 +923,7 @@ public int lesskey(char *filename, int sysvar)
 		close(f);
 		return (-1);
 	}
-	if ((buf = (char *) calloc((int)len, sizeof(char))) == NULL)
+	if ((buf = (unsigned char *) calloc((size_t)len, sizeof(char))) == NULL)
 	{
 		close(f);
 		return (-1);
@@ -931,7 +934,7 @@ public int lesskey(char *filename, int sysvar)
 		close(f);
 		return (-1);
 	}
-	n = read(f, buf, (unsigned int) len);
+	n = read(f, buf, (size_t) len);
 	close(f);
 	if (n != len)
 	{
@@ -946,12 +949,12 @@ public int lesskey(char *filename, int sysvar)
 	if (len < 4 || 
 	    buf[0] != C0_LESSKEY_MAGIC || buf[1] != C1_LESSKEY_MAGIC ||
 	    buf[2] != C2_LESSKEY_MAGIC || buf[3] != C3_LESSKEY_MAGIC)
-		return (old_lesskey(buf, (int)len));
-	return (new_lesskey(buf, (int)len, sysvar));
+		return (old_lesskey(buf, (size_t) len));
+	return (new_lesskey(buf, (size_t) len, sysvar));
 }
 
 #if HAVE_LESSKEYSRC 
-static int lesskey_text(char *filename, int sysvar, int content)
+static int lesskey_text(constant char *filename, int sysvar, int content)
 {
 	static struct lesskey_tables tables;
 	if (!secure_allow(SF_LESSKEY))
@@ -959,19 +962,19 @@ static int lesskey_text(char *filename, int sysvar, int content)
 	int r = content ? parse_lesskey_content(filename, &tables) : parse_lesskey(filename, &tables);
 	if (r != 0)
 		return (r);
-	add_fcmd_table(xbuf_char_data(&tables.cmdtable.buf), tables.cmdtable.buf.end);
-	add_ecmd_table(xbuf_char_data(&tables.edittable.buf), tables.edittable.buf.end);
+	add_fcmd_table(tables.cmdtable.buf.data, tables.cmdtable.buf.end);
+	add_ecmd_table(tables.edittable.buf.data, tables.edittable.buf.end);
 	add_var_table(sysvar ? &list_sysvar_tables : &list_var_tables,
-		xbuf_char_data(&tables.vartable.buf), tables.vartable.buf.end);
+		tables.vartable.buf.data, tables.vartable.buf.end);
 	return (0);
 }
 
-public int lesskey_src(char *filename, int sysvar)
+public int lesskey_src(constant char *filename, int sysvar)
 {
 	return lesskey_text(filename, sysvar, FALSE);
 }
 
-public int lesskey_content(char *content, int sysvar)
+public int lesskey_content(constant char *content, int sysvar)
 {
 	return lesskey_text(content, sysvar, TRUE);
 }
@@ -987,24 +990,25 @@ void lesskey_parse_error(char *s)
 /*
  * Add a lesskey file.
  */
-public int add_hometable(int (*call_lesskey)(char *, int), char *envname, char *def_filename, int sysvar)
+static int add_hometable(int (*call_lesskey)(constant char *, int), constant char *envname, constant char *def_filename, int sysvar)
 {
-	char *filename;
+	char *filename = NULL;
+	constant char *efilename;
 	int r;
 
-	if (envname != NULL && (filename = lgetenv(envname)) != NULL)
-		filename = save(filename);
+	if (envname != NULL && (efilename = lgetenv(envname)) != NULL)
+		filename = save(efilename);
 	else if (sysvar) /* def_filename is full path */
 		filename = save(def_filename);
 	else /* def_filename is just basename */
 	{
 		/* Remove first char (normally a dot) unless stored in $HOME. */
-		char *xdg = lgetenv("XDG_CONFIG_HOME");
+		constant char *xdg = lgetenv("XDG_CONFIG_HOME");
 		if (!isnullenv(xdg))
 			filename = dirfile(xdg, &def_filename[1], 1);
 		if (filename == NULL)
 		{
-			char *home = lgetenv("HOME");
+			constant char *home = lgetenv("HOME");
 			if (!isnullenv(home))
 			{
 				char *cfg_dir = dirfile(home, ".config", 0);
@@ -1025,9 +1029,10 @@ public int add_hometable(int (*call_lesskey)(char *, int), char *envname, char *
 /*
  * Add the content of a lesskey source file.
  */
-static void add_content_table(int (*call_lesskey)(char *, int), char *envname, int sysvar)
+static void add_content_table(int (*call_lesskey)(constant char *, int), constant char *envname, int sysvar)
 {
-	char *content = lgetenv(envname);
+	(void) call_lesskey; /* not used */
+	constant char *content = lgetenv(envname);
 	if (isnullenv(content))
 		return;
 	lesskey_content(content, sysvar);
@@ -1041,7 +1046,7 @@ public int editchar(int c, int flags)
 {
 	int action;
 	int nch;
-	char *s;
+	constant char *s;
 	char usercmd[MAX_CMDLEN+1];
 	
 	/*

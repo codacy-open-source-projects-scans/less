@@ -120,8 +120,8 @@ struct cs_alias {
 #define IS_CONTROL_CHAR 02
 
 static char chardef[256];
-static char *binfmt = NULL;
-static char *utfbinfmt = NULL;
+static constant char *binfmt = NULL;
+static constant char *utfbinfmt = NULL;
 public int binattr = AT_STANDOUT|AT_COLOR_BIN;
 
 static struct xbuffer user_wide_array;
@@ -139,13 +139,13 @@ static struct wchar_range_table user_prt_table;
 static void wchar_range_table_set(struct wchar_range_table *tbl, struct xbuffer *arr)
 {
 	tbl->table = (struct wchar_range *) arr->data;
-	tbl->count = arr->end / sizeof(struct wchar_range);
+	tbl->count = (unsigned int) (arr->end / sizeof(struct wchar_range));
 }
 
 /*
  * Skip over a "U" or "U+" prefix before a hex codepoint.
  */
-static char * skip_uprefix(char *s)
+static constant char * skip_uprefix(constant char *s)
 {
 	if (*s == 'U' || *s == 'u')
 		if (*++s == '+') ++s;
@@ -155,14 +155,14 @@ static char * skip_uprefix(char *s)
 /*
  * Parse a dash-separated range of hex values.
  */
-static void wchar_range_get(char **ss, struct wchar_range *range)
+static void wchar_range_get(constant char **ss, struct wchar_range *range)
 {
-	char *s = skip_uprefix(*ss);
-	range->first = lstrtoul(s, &s, 16);
+	constant char *s = skip_uprefix(*ss);
+	range->first = lstrtoulc(s, &s, 16);
 	if (s[0] == '-')
 	{
 		s = skip_uprefix(&s[1]);
-		range->last = lstrtoul(s, &s, 16);
+		range->last = lstrtoulc(s, &s, 16);
 	} else 
 	{
 		range->last = range->first;
@@ -173,7 +173,7 @@ static void wchar_range_get(char **ss, struct wchar_range *range)
 /*
  * Parse the LESSUTFCHARDEF variable.
  */
-static void ichardef_utf(char *s)
+static void ichardef_utf(constant char *s)
 {
 	xbuf_init(&user_wide_array);
 	xbuf_init(&user_ubin_array);
@@ -241,7 +241,7 @@ static void ichardef_utf(char *s)
  *      b binary character
  *      c control character
  */
-static void ichardef(char *s)
+static void ichardef(constant char *s)
 {
 	char *cp;
 	int n;
@@ -298,7 +298,7 @@ static void ichardef(char *s)
  * Define a charset, given a charset name.
  * The valid charset names are listed in the "charsets" array.
  */
-static int icharset(char *name, int no_error)
+static int icharset(constant char *name, int no_error)
 {
 	struct charset *p;
 	struct cs_alias *a;
@@ -363,7 +363,7 @@ static void ilocale(void)
 /*
  * Define the printing format for control (or binary utf) chars.
  */
-public void setfmt(char *s, char **fmtvarptr, int *attrptr, char *default_fmt, int for_printf)
+public void setfmt(constant char *s, constant char **fmtvarptr, int *attrptr, constant char *default_fmt, int for_printf)
 {
 	if (s && utf_mode)
 	{
@@ -412,7 +412,7 @@ public void setfmt(char *s, char **fmtvarptr, int *attrptr, char *default_fmt, i
  */
 static void set_charset(void)
 {
-	char *s;
+	constant char *s;
 
 	ichardef_utf(lgetenv("LESSUTFCHARDEF"));
 
@@ -492,7 +492,7 @@ static void set_charset(void)
  */
 public void init_charset(void)
 {
-	char *s;
+	constant char *s;
 
 #if HAVE_LOCALE
 	setlocale(LC_ALL, "");
@@ -531,7 +531,7 @@ public int control_char(LWCHAR c)
  * Return the printable form of a character.
  * For example, in the "ascii" charset '\3' is printed as "^C".
  */
-public char * prchar(LWCHAR c)
+public constant char * prchar(LWCHAR c)
 {
 	/* {{ This buffer can be overrun if LESSBINFMT is a long string. }} */
 	static char buf[MAX_PRCHAR_LEN+1];
@@ -565,7 +565,7 @@ public char * prchar(LWCHAR c)
 /*
  * Return the printable form of a UTF-8 character.
  */
-public char * prutfchar(LWCHAR ch)
+public constant char * prutfchar(LWCHAR ch)
 {
 	static char buf[MAX_PRCHAR_LEN+1];
 
@@ -594,7 +594,7 @@ public char * prutfchar(LWCHAR ch)
 /*
  * Get the length of a UTF-8 character in bytes.
  */
-public int utf_len(int ch)
+public int utf_len(unsigned char ch)
 {
 	if ((ch & 0x80) == 0)
 		return 1;
@@ -617,11 +617,11 @@ public int utf_len(int ch)
 /*
  * Does the parameter point to the lead byte of a well-formed UTF-8 character?
  */
-public int is_utf8_well_formed(char *ss, int slen)
+public int is_utf8_well_formed(constant char *ss, int slen)
 {
 	int i;
 	int len;
-	unsigned char *s = (unsigned char *) ss;
+	constant unsigned char *s = (constant unsigned char *) ss;
 
 	if (IS_UTF8_INVALID(s[0]))
 		return (0);
@@ -652,7 +652,7 @@ public int is_utf8_well_formed(char *ss, int slen)
 /*
  * Skip bytes until a UTF-8 lead byte (11xxxxxx) or ASCII byte (0xxxxxxx) is found.
  */
-public void utf_skip_to_lead(char **pp, char *limit)
+public void utf_skip_to_lead(constant char **pp, constant char *limit)
 {
 	do {
 		++(*pp);
@@ -663,8 +663,9 @@ public void utf_skip_to_lead(char **pp, char *limit)
 /*
  * Get the value of a UTF-8 character.
  */
-public LWCHAR get_wchar(constant char *p)
+public LWCHAR get_wchar(constant char *sp)
 {
+	constant unsigned char *p = (constant unsigned char *) sp;
 	switch (utf_len(p[0]))
 	{
 	case 1:
@@ -764,11 +765,11 @@ public void put_wchar(char **pp, LWCHAR ch)
 /*
  * Step forward or backward one character in a string.
  */
-public LWCHAR step_char(char **pp, signed int dir, constant char *limit)
+public LWCHAR step_charc(constant char **pp, signed int dir, constant char *limit)
 {
 	LWCHAR ch;
 	int len;
-	char *p = *pp;
+	constant char *p = *pp;
 
 	if (!utf_mode)
 	{
@@ -799,6 +800,14 @@ public LWCHAR step_char(char **pp, signed int dir, constant char *limit)
 			ch = 0;
 	}
 	*pp = p;
+	return ch;
+}
+
+public LWCHAR step_char(char **pp, signed int dir, constant char *limit)
+{
+	constant char *p = (constant char *) *pp;
+	LWCHAR ch = step_charc(&p, dir, limit);
+	*pp = (char *) p;
 	return ch;
 }
 
@@ -836,8 +845,8 @@ static struct wchar_range comb_table[] = {
 
 static int is_in_table(LWCHAR ch, struct wchar_range_table *table)
 {
-	int hi;
-	int lo;
+	unsigned int hi;
+	unsigned int lo;
 
 	/* Binary search in the table. */
 	if (table->table == NULL || table->count == 0 || ch < table->table[0].first)
@@ -846,7 +855,7 @@ static int is_in_table(LWCHAR ch, struct wchar_range_table *table)
 	hi = table->count - 1;
 	while (lo <= hi)
 	{
-		int mid = (lo + hi) / 2;
+		unsigned int mid = (lo + hi) / 2;
 		if (ch > table->table[mid].last)
 			lo = mid + 1;
 		else if (ch < table->table[mid].first)

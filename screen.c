@@ -190,7 +190,7 @@ public int vt_enabled = -1;     /* Is virtual terminal processing available? */
 /*
  * Strings passed to tputs() to do various terminal functions.
  */
-static char
+static constant char
 	*sc_pad,                /* Pad string */
 	*sc_home,               /* Cursor home */
 	*sc_addline,            /* Add line, scroll down following lines */
@@ -237,7 +237,7 @@ public int above_mem, below_mem;        /* Memory retained above/below screen */
 public int can_goto_line;               /* Can move cursor to any line */
 public int clear_bg;            /* Clear fills with background color */
 public int missing_cap = 0;     /* Some capability is missing */
-public char *kent = NULL;       /* Keypad ENTER sequence */
+public constant char *kent = NULL;       /* Keypad ENTER sequence */
 public int term_init_done = FALSE;
 public int full_screen = TRUE;
 
@@ -246,14 +246,11 @@ static int termcap_debug = -1;
 static int no_alt_screen;       /* sc_init does not switch to alt screen */
 extern int binattr;
 extern int one_screen;
-#if LESSTEST
-extern char *ttyin_name;
-#endif /*LESSTEST*/
 
 #if !MSDOS_COMPILER
-static char *cheaper(char *t1, char *t2, char *def);
-static void tmodes(char *incap, char *outcap, char **instr,
-    char **outstr, char *def_instr, char *def_outstr, char **spp);
+static constant char *cheaper(constant char *t1, constant char *t2, constant char *def);
+static void tmodes(constant char *incap, constant char *outcap, constant char **instr,
+    constant char **outstr, constant char *def_instr, constant char *def_outstr, char **spp);
 #endif
 
 /*
@@ -377,7 +374,7 @@ public void raw_mode(int on)
 			return;
 	erase2_char = '\b'; /* in case OS doesn't know about erase2 */
 #if LESSTEST
-	if (ttyin_name != NULL)
+	if (is_lesstest())
 	{
 		/* {{ For consistent conditions when running tests. }} */
 		erase_char = '\b';
@@ -706,7 +703,7 @@ public void raw_mode(int on)
  */
 static int hardcopy;
 
-static char * ltget_env(char *capname)
+static constant char * ltget_env(constant char *capname)
 {
 	char name[64];
 
@@ -730,9 +727,9 @@ static char * ltget_env(char *capname)
 	return (lgetenv(name));
 }
 
-static int ltgetflag(char *capname)
+static int ltgetflag(constant char *capname)
 {
-	char *s;
+	constant char *s;
 
 	if ((s = ltget_env(capname)) != NULL)
 		return (*s != '\0' && *s != '0');
@@ -741,9 +738,9 @@ static int ltgetflag(char *capname)
 	return (tgetflag(capname));
 }
 
-static int ltgetnum(char *capname)
+static int ltgetnum(constant char *capname)
 {
-	char *s;
+	constant char *s;
 
 	if ((s = ltget_env(capname)) != NULL)
 		return (atoi(s));
@@ -752,9 +749,9 @@ static int ltgetnum(char *capname)
 	return (tgetnum(capname));
 }
 
-static char * ltgetstr(char *capname, char **pp)
+static constant char * ltgetstr(constant char *capname, char **pp)
 {
-	char *s;
+	constant char *s;
 
 	if ((s = ltget_env(capname)) != NULL)
 		return (s);
@@ -769,7 +766,7 @@ static char * ltgetstr(char *capname, char **pp)
  */
 static void scrsize(void)
 {
-	char *s;
+	constant char *s;
 	int sys_height;
 	int sys_width;
 #if !MSDOS_COMPILER
@@ -787,7 +784,7 @@ static void scrsize(void)
 	sys_width = sys_height = 0;
 
 #if LESSTEST
-	if (0) /* can't test ttyin_name; it is not set yet */
+	if (0) /* can't use is_lesstest(): ttyin_name may not be set by scan_option yet */
 #endif /*LESSTEST*/
 	{
 #if MSDOS_COMPILER==MSOFTC
@@ -955,10 +952,10 @@ static void delay(int msec)
 /*
  * Return the characters actually input by a "special" key.
  */
-public char * special_key_str(int key)
+public constant char * special_key_str(int key)
 {
 	static char tbuf[40];
-	char *s;
+	constant char *s;
 #if MSDOS_COMPILER || OS2
 	static char k_right[]           = { '\340', PCK_RIGHT, 0 };
 	static char k_left[]            = { '\340', PCK_LEFT, 0  };
@@ -1201,8 +1198,9 @@ public void get_term(void)
 #else /* !MSDOS_COMPILER */
 {
 	char *sp;
-	char *t1, *t2;
-	char *term;
+	constant char *t1;
+	constant char *t2;
+	constant char *term;
 	/*
 	 * Some termcap libraries assume termbuf is static
 	 * (accessible after tgetent returns).
@@ -1214,8 +1212,8 @@ public void get_term(void)
 	/*
 	 * Make sure the termcap database is available.
 	 */
-	sp = lgetenv("TERMCAP");
-	if (isnullenv(sp))
+	constant char *cp = lgetenv("TERMCAP");
+	if (isnullenv(cp))
 	{
 		char *termcap;
 		if ((sp = homefile("termcap.dat")) != NULL)
@@ -1452,7 +1450,7 @@ static int inc_costcount(int c)
 	return (c);
 }
 
-static int cost(char *t)
+static int cost(constant char *t)
 {
 	costcount = 0;
 	tputs(t, sc_height, inc_costcount);
@@ -1464,7 +1462,7 @@ static int cost(char *t)
  * The best, if both exist, is the one with the lower 
  * cost (see cost() function).
  */
-static char * cheaper(char *t1, char *t2, char *def)
+static constant char * cheaper(constant char *t1, constant char *t2, constant char *def)
 {
 	if (*t1 == '\0' && *t2 == '\0')
 	{
@@ -1480,7 +1478,7 @@ static char * cheaper(char *t1, char *t2, char *def)
 	return (t2);
 }
 
-static void tmodes(char *incap, char *outcap, char **instr, char **outstr, char *def_instr, char *def_outstr, char **spp)
+static void tmodes(constant char *incap, constant char *outcap, constant char **instr, constant char **outstr, constant char *def_instr, constant char *def_outstr, char **spp)
 {
 	*instr = ltgetstr(incap, spp);
 	if (*instr == NULL)
@@ -1634,10 +1632,10 @@ static void win32_deinit_term(void)
 #endif
 
 #if !MSDOS_COMPILER
-static void do_tputs(char *str, int affcnt, int (*f_putc)(int))
+static void do_tputs(constant char *str, int affcnt, int (*f_putc)(int))
 {
 #if LESSTEST
-	if (ttyin_name != NULL && f_putc == putchr)
+	if (is_lesstest() && f_putc == putchr)
 		putstr(str);
 	else
 #endif /*LESSTEST*/
@@ -1648,16 +1646,16 @@ static void do_tputs(char *str, int affcnt, int (*f_putc)(int))
  * Like tputs but we handle $<...> delay strings here because
  * some implementations of tputs don't perform delays correctly.
  */
-static void ltputs(char *str, int affcnt, int (*f_putc)(int))
+static void ltputs(constant char *str, int affcnt, int (*f_putc)(int))
 {
 	while (str != NULL && *str != '\0')
 	{
 #if HAVE_STRSTR
-		char *obrac = strstr(str, "$<");
+		constant char *obrac = strstr(str, "$<");
 		if (obrac != NULL)
 		{
 			char str2[64];
-			int slen = obrac - str;
+			size_t slen = ptr_diff(obrac, str);
 			if (slen < sizeof(str2))
 			{
 				int delay;
@@ -1667,7 +1665,7 @@ static void ltputs(char *str, int affcnt, int (*f_putc)(int))
 				do_tputs(str2, affcnt, f_putc);
 				str += slen + 2;
 				/* Perform the delay. */
-				delay = lstrtoi(str, &str, 10);
+				delay = lstrtoic(str, &str, 10);
 				if (*str == '*')
 					if (ckd_mul(&delay, delay, affcnt))
 						delay = INT_MAX;
@@ -2455,7 +2453,7 @@ static int parse_color4(char ch)
 /*
  * Parse a color as a decimal integer.
  */
-static int parse_color6(char **ps)
+static int parse_color6(constant char **ps)
 {
 	if (**ps == '-')
 	{
@@ -2463,9 +2461,9 @@ static int parse_color6(char **ps)
 		return CV_NOCHANGE;
 	} else
 	{
-		char *ops = *ps;
-		int color = lstrtoi(ops, ps, 10);
-		if (color < 0 || *ps == ops)
+		constant char *os = *ps;
+		int color = lstrtoic(os, ps, 10);
+		if (color < 0 || *ps == os)
 			return CV_ERROR;
 		return color;
 	}
@@ -2477,7 +2475,7 @@ static int parse_color6(char **ps)
  *  CV_4BIT: fg/bg values are OR of CV_{RGB} bits.
  *  CV_6BIT: fg/bg values are integers entered by user.
  */
-public COLOR_TYPE parse_color(char *str, int *p_fg, int *p_bg)
+public COLOR_TYPE parse_color(constant char *str, int *p_fg, int *p_bg)
 {
 	int fg;
 	int bg;
@@ -2532,7 +2530,7 @@ static int sgr_color(int color)
 	}
 }
 
-static void tput_fmt(char *fmt, int color, int (*f_putc)(int))
+static void tput_fmt(constant char *fmt, int color, int (*f_putc)(int))
 {
 	char buf[INT_STRLEN_BOUND(int)+16];
 	if (color == attrcolor)
@@ -2542,7 +2540,7 @@ static void tput_fmt(char *fmt, int color, int (*f_putc)(int))
 	attrcolor = color;
 }
 
-static void tput_color(char *str, int (*f_putc)(int))
+static void tput_color(constant char *str, int (*f_putc)(int))
 {
 	int fg;
 	int bg;
@@ -2572,9 +2570,9 @@ static void tput_color(char *str, int (*f_putc)(int))
 	}
 }
 
-static void tput_inmode(char *mode_str, int attr, int attr_bit, int (*f_putc)(int))
+static void tput_inmode(constant char *mode_str, int attr, int attr_bit, int (*f_putc)(int))
 {
-	char *color_str;
+	constant char *color_str;
 	if ((attr & attr_bit) == 0)
 		return;
 	color_str = get_color_map(attr_bit);
@@ -2588,7 +2586,7 @@ static void tput_inmode(char *mode_str, int attr, int attr_bit, int (*f_putc)(in
 	tput_color(color_str, f_putc);
 }
 
-static void tput_outmode(char *mode_str, int attr_bit, int (*f_putc)(int))
+static void tput_outmode(constant char *mode_str, int attr_bit, int (*f_putc)(int))
 {
 	if ((attrmode & attr_bit) == 0)
 		return;
@@ -2598,7 +2596,7 @@ static void tput_outmode(char *mode_str, int attr_bit, int (*f_putc)(int))
 #else /* MSDOS_COMPILER */
 
 #if MSDOS_COMPILER==WIN32C
-static int WIN32put_fmt(char *fmt, int color)
+static int WIN32put_fmt(constant char *fmt, int color)
 {
 	char buf[INT_STRLEN_BOUND(int)+16];
 	int len = SNPRINTF1(buf, sizeof(buf), fmt, color);
@@ -2612,7 +2610,7 @@ static int win_set_color(int attr)
 	int fg;
 	int bg;
 	int out = FALSE;
-	char *str = get_color_map(attr);
+	constant char *str = get_color_map(attr);
 	if (str == NULL || str[0] == '\0')
 		return FALSE;
 	switch (parse_color(str, &fg, &bg))
@@ -2987,7 +2985,6 @@ static int win32_key_event(XINPUT_RECORD *xip)
 	int repeat;
 	char utf8[UTF8_MAX_LENGTH];
 	char *up;
-	char *p;
 
 	if (xip->ir.EventType != KEY_EVENT ||
 	    ((xip->ir.Event.KeyEvent.dwControlKeyState & (RIGHT_ALT_PRESSED|LEFT_CTRL_PRESSED)) == (RIGHT_ALT_PRESSED|LEFT_CTRL_PRESSED) && xip->ir.Event.KeyEvent.uChar.UnicodeChar == 0) ||
@@ -3015,6 +3012,7 @@ static int win32_key_event(XINPUT_RECORD *xip)
 	put_wchar(&up, xip->ichar);
 	for (; repeat > 0; --repeat)
 	{
+		constant char *p;
 		for (p = utf8; p < up; ++p)
 			 win32_enqueue(*p);
 	}
@@ -3085,7 +3083,7 @@ public void WIN32setcolors(int fg, int bg)
 
 /*
  */
-public void WIN32textout(char *text, int len)
+public void WIN32textout(constant char *text, int len)
 {
 #if MSDOS_COMPILER==WIN32C
 	DWORD written;

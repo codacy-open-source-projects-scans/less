@@ -6,10 +6,19 @@
  */
 public void xbuf_init(struct xbuffer *xbuf)
 {
-	xbuf->data = NULL;
-	xbuf->size = xbuf->end = 0;
+	xbuf_init_size(xbuf, 16);
 }
 
+public void xbuf_init_size(struct xbuffer *xbuf, size_t init_size)
+{
+	xbuf->data = NULL;
+	xbuf->size = xbuf->end = 0;
+	xbuf->init_size = init_size;
+}
+
+/*
+ * Free buffer space in an xbuf.
+ */
 public void xbuf_deinit(struct xbuffer *xbuf)
 {
 	if (xbuf->data != NULL)
@@ -17,20 +26,23 @@ public void xbuf_deinit(struct xbuffer *xbuf)
 	xbuf_init(xbuf);
 }
 
+/*
+ * Set xbuf to empty.
+ */
 public void xbuf_reset(struct xbuffer *xbuf)
 {
 	xbuf->end = 0;
 }
 
 /*
- * Add a byte to an expandable text buffer.
+ * Add a byte to an xbuf.
  */
 public void xbuf_add_byte(struct xbuffer *xbuf, unsigned char b)
 {
 	if (xbuf->end >= xbuf->size)
 	{
 		unsigned char *data;
-		if (ckd_add(&xbuf->size, xbuf->size, xbuf->size ? xbuf->size : 16))
+		if (ckd_add(&xbuf->size, xbuf->size, xbuf->size ? xbuf->size : xbuf->init_size))
 			out_of_memory();
 		data = (unsigned char *) ecalloc(xbuf->size, sizeof(unsigned char));
 		if (xbuf->data != NULL)
@@ -43,13 +55,27 @@ public void xbuf_add_byte(struct xbuffer *xbuf, unsigned char b)
 	xbuf->data[xbuf->end++] = (unsigned char) b;
 }
 
-public void xbuf_add_data(struct xbuffer *xbuf, unsigned char *data, int len)
+/*
+ * Add a char to an xbuf.
+ */
+public void xbuf_add_char(struct xbuffer *xbuf, char c)
 {
-	int i;
+	xbuf_add_byte(xbuf, (unsigned char) c);
+}
+
+/*
+ * Add arbitrary data to an xbuf.
+ */
+public void xbuf_add_data(struct xbuffer *xbuf, constant unsigned char *data, size_t len)
+{
+	size_t i;
 	for (i = 0;  i < len;  i++)
 		xbuf_add_byte(xbuf, data[i]);
 }
 
+/*
+ * Remove the last byte from an xbuf.
+ */
 public int xbuf_pop(struct xbuffer *buf)
 {
 	if (buf->end == 0)
@@ -57,15 +83,21 @@ public int xbuf_pop(struct xbuffer *buf)
 	return (int) buf->data[--(buf->end)];
 }
 
+/*
+ * Set an xbuf to the contents of another xbuf.
+ */
 public void xbuf_set(struct xbuffer *dst, struct xbuffer *src)
 {
 	xbuf_reset(dst);
 	xbuf_add_data(dst, src->data, src->end);
 }
 
-public char * xbuf_char_data(struct xbuffer *xbuf)
+/*
+ * Return xbuf data as a char*.
+ */
+public constant char * xbuf_char_data(constant struct xbuffer *xbuf)
 {
-	return (char *)(xbuf->data);
+	return (constant char *)(xbuf->data);
 }
 
 

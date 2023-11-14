@@ -30,8 +30,8 @@ extern int less_is_more;
 extern int header_lines;
 extern IFILE curr_ifile;
 #if EDITOR
-extern char *editor;
-extern char *editproto;
+extern constant char *editor;
+extern constant char *editproto;
 #endif
 
 /*
@@ -77,13 +77,13 @@ public void init_prompt(void)
 /*
  * Append a string to the end of the message.
  */
-static void ap_str(char *s)
+static void ap_str(constant char *s)
 {
-	int len;
+	size_t len;
 
-	len = (int) strlen(s);
+	len = strlen(s);
 	if (mp + len >= message + PROMPT_SIZE)
-		len = (int) (message + PROMPT_SIZE - mp - 1);
+		len = ptr_diff(message, mp) + PROMPT_SIZE - 1;
 	strncpy(mp, s, len);
 	mp += len;
 	*mp = '\0';
@@ -457,7 +457,7 @@ static constant char * wherechar(char constant *p, int *wp)
 /*
  * Construct a message based on a prototype string.
  */
-public char * pr_expand(constant char *proto)
+public constant char * pr_expand(constant char *proto)
 {
 	constant char *p;
 	int c;
@@ -522,7 +522,7 @@ public char * pr_expand(constant char *proto)
 /*
  * Return a message suitable for printing by the "=" command.
  */
-public char * eq_message(void)
+public constant char * eq_message(void)
 {
 	return (pr_expand(eqproto));
 }
@@ -533,9 +533,9 @@ public char * eq_message(void)
  * If we can't come up with an appropriate prompt, return NULL
  * and the caller will prompt with a colon.
  */
-public char * pr_string(void)
+public constant char * pr_string(void)
 {
-	char *prompt;
+	constant char *prompt;
 	int type;
 
 	type = (!less_is_more) ? pr_type : pr_type ? 0 : 1;
@@ -548,7 +548,7 @@ public char * pr_string(void)
 /*
  * Return a message suitable for printing while waiting in the F command.
  */
-public char * wait_message(void)
+public constant char * wait_message(void)
 {
 	return (pr_expand(wproto));
 }

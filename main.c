@@ -34,7 +34,7 @@ public struct scrpos initial_scrpos;
 public POSITION start_attnpos = NULL_POSITION;
 public POSITION end_attnpos = NULL_POSITION;
 public int      wscroll;
-public char *   progname;
+public constant char *progname;
 public int      quitting;
 public int      dohelp;
 static int      secure_allow_features;
@@ -46,8 +46,8 @@ public char *   namelogfile = NULL;
 #endif
 
 #if EDITOR
-public char *   editor;
-public char *   editproto;
+public constant char *   editor;
+public constant char *   editproto;
 #endif
 
 #if TAGS
@@ -75,12 +75,12 @@ extern int      first_time;
 /* malloc'ed 0-terminated utf8 of 0-terminated wide ws, or null on errors */
 static char *utf8_from_wide(const wchar_t *ws)
 {
-	char *u8 = 0;
-	int n = WideCharToMultiByte(CP_UTF8, 0, ws, -1, 0, 0, 0, 0);
+	char *u8 = NULL;
+	int n = WideCharToMultiByte(CP_UTF8, 0, ws, -1, NULL, 0, NULL, NULL);
 	if (n > 0)
 	{
 		u8 = ecalloc(n, sizeof(char));
-		WideCharToMultiByte(CP_UTF8, 0, ws, -1, u8, n, 0, 0);
+		WideCharToMultiByte(CP_UTF8, 0, ws, -1, u8, n, NULL, NULL);
 	}
 	return u8;
 }
@@ -91,11 +91,12 @@ static char *utf8_from_wide(const wchar_t *ws)
  * make them UTF8. CP_ACP remains the original codepage - use less_acp instead.
  * effective on win 10 1803 or later when compiled with ucrt, else no-op.
  */
-static void try_utf8_locale(int *pargc, char ***pargv)
+static void try_utf8_locale(int *pargc, constant char ***pargv)
 {
-	char *locale_orig = strdup(setlocale(LC_ALL, 0));
-	wchar_t **wargv = 0, *wenv, *wp;
-	char **u8argv, *u8e;
+	char *locale_orig = strdup(setlocale(LC_ALL, NULL));
+	wchar_t **wargv = NULL, *wenv, *wp;
+	constant char **u8argv;
+	char *u8e;
 	int i, n;
 
 	if (!setlocale(LC_ALL, ".UTF8"))
@@ -110,7 +111,7 @@ static void try_utf8_locale(int *pargc, char ***pargv)
 	if (!wargv)
 		goto bad_args;
 
-	u8argv = (char **)ecalloc(n + 1, sizeof(char *));
+	u8argv = (constant char **) ecalloc(n + 1, sizeof(char *));
 	for (i = 0; i < n; ++i)
 	{
 		if (!(u8argv[i] = utf8_from_wide(wargv[i])))
@@ -146,21 +147,22 @@ cleanup:
 }
 #endif
 
-static int security_feature_error(constant char *type, int len, constant char *name)
+static int security_feature_error(constant char *type, size_t len, constant char *name)
 {
 	PARG parg;
-	int msglen = len+strlen(type)+64;
-	parg.p_string = ecalloc(msglen, sizeof(char));
-	SNPRINTF3(parg.p_string, msglen, "LESSSECURE_ALLOW: %s feature name \"%.*s\"", type, len, name);
+	size_t msglen = len + strlen(type) + 64;
+	char *msg = ecalloc(msglen, sizeof(char));
+	SNPRINTF3(msg, msglen, "LESSSECURE_ALLOW: %s feature name \"%.*s\"", type, (int) len, name);
+	parg.p_string = msg;
 	error("%s", &parg);
-	free(parg.p_string);
+	free(msg);
 	return 0;
 }
 
 /*
  * Return the SF_xxx value of a secure feature given the name of the feature.
  */
-static int security_feature(constant char *name, int len)
+static int security_feature(constant char *name, size_t len)
 {
 	struct secure_feature { constant char *name; int sf_value; };
 	static struct secure_feature features[] = {
@@ -202,7 +204,7 @@ static void init_secure(void)
 #if SECURE
 	secure_allow_features = 0;
 #else
-	char *str = lgetenv("LESSSECURE");
+	constant char *str = lgetenv("LESSSECURE");
 	if (isnullenv(str))
 		secure_allow_features = ~0; /* allow everything */
 	else
@@ -213,13 +215,13 @@ static void init_secure(void)
 	{
 		for (;;)
 		{
-			char *estr;
+			constant char *estr;
 			while (*str == ' ' || *str == ',') ++str; /* skip leading spaces/commas */
 			if (*str == '\0') break;
 			estr = strchr(str, ',');
 			if (estr == NULL) estr = str + strlen(str);
 			while (estr > str && estr[-1] == ' ') --estr; /* trim trailing spaces */
-			secure_allow_features |= security_feature(str, estr-str);
+			secure_allow_features |= security_feature(str, ptr_diff(estr, str));
 			str = estr;
 		}
 	}
@@ -229,10 +231,10 @@ static void init_secure(void)
 /*
  * Entry point.
  */
-int main(int argc, char *argv[])
+int main(int argc, constant char *argv[])
 {
 	IFILE ifile;
-	char *s;
+	constant char *s;
 
 #if MSDOS_COMPILER==WIN32C && (defined(MINGW) || defined(_MSC_VER))
 	if (GetACP() != CP_UTF8)  /* not using a UTF-8 manifest */
@@ -288,8 +290,7 @@ int main(int argc, char *argv[])
 	 * If the name of the executable program is "more",
 	 * act like LESS_IS_MORE is set.
 	 */
-	s = last_component(progname);
-	if (strcmp(s, "more") == 0)
+	if (strcmp(last_component(progname), "more") == 0)
 		less_is_more = 1;
 
 	init_prompt();
@@ -353,7 +354,7 @@ int main(int argc, char *argv[])
 		 * Expand the pattern and iterate over the expanded list.
 		 */
 		struct textlist tlist;
-		char *filename;
+		constant char *filename;
 		char *gfilename;
 		char *qfilename;
 		
@@ -488,7 +489,7 @@ public void out_of_memory(void)
  * Allocate memory.
  * Like calloc(), but never returns an error (NULL).
  */
-public void * ecalloc(int count, unsigned int size)
+public void * ecalloc(size_t count, size_t size)
 {
 	void * p;
 
@@ -508,16 +509,24 @@ public char * skipsp(char *s)
 	return (s);
 }
 
+/* {{ There must be a better way. }} */
+public constant char * skipspc(constant char *s)
+{
+	while (*s == ' ' || *s == '\t')
+		s++;
+	return (s);
+}
+
 /*
  * See how many characters of two strings are identical.
  * If uppercase is true, the first string must begin with an uppercase
  * character; the remainder of the first string may be either case.
  */
-public int sprefix(char *ps, char *s, int uppercase)
+public size_t sprefix(constant char *ps, constant char *s, int uppercase)
 {
-	int c;
-	int sc;
-	int len = 0;
+	char c;
+	char sc;
+	size_t len = 0;
 
 	for ( ;  *s != '\0';  s++, ps++)
 	{
@@ -525,7 +534,7 @@ public int sprefix(char *ps, char *s, int uppercase)
 		if (uppercase)
 		{
 			if (len == 0 && ASCII_IS_LOWER(c))
-				return (-1);
+				return (0);
 			if (ASCII_IS_UPPER(c))
 				c = ASCII_TO_LOWER(c);
 		}

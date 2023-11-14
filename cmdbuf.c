@@ -31,7 +31,7 @@ static int prompt_col;           /* Column of cursor just after prompt */
 static char *cp;                 /* Pointer into cmdbuf */
 static int cmd_offset;           /* Index into cmdbuf of first displayed char */
 static int literal;              /* Next input char should not be interpreted */
-public int updown_match = -1;    /* Prefix length in up/down movement */
+public ssize_t updown_match = -1;    /* Prefix length in up/down movement */
 
 #if TAB_COMPLETE_FILENAME
 static int cmd_complete(int action);
@@ -41,8 +41,8 @@ static int cmd_complete(int action);
 static int in_completion = 0;
 static char *tk_text;
 static char *tk_original;
-static char *tk_ipoint;
-static char *tk_trial = NULL;
+static constant char *tk_ipoint;
+static constant char *tk_trial = NULL;
 static struct textlist tk_tlist;
 #endif
 
@@ -147,11 +147,11 @@ public void cmd_putstr(constant char *s)
 	constant char *endline = s + strlen(s);
 	while (*s != '\0')
 	{
-		char *ns = (char *) s;
+		constant char *os = s;
 		int width;
-		ch = step_char(&ns, +1, endline);
-		while (s < ns)
-			putchr(*s++);
+		ch = step_charc(&s, +1, endline);
+		while (os < s)
+			putchr(*os++);
 		if (!utf_mode)
 			width = 1;
 		else if (is_composing_char(ch) || is_combining_char(prev_ch, ch))
@@ -169,13 +169,13 @@ public void cmd_putstr(constant char *s)
  */
 public int len_cmdbuf(void)
 {
-	char *s = cmdbuf;
-	char *endline = s + strlen(s);
+	constant char *s = cmdbuf;
+	constant char *endline = s + strlen(s);
 	int len = 0;
 
 	while (*s != '\0')
 	{
-		step_char(&s, +1, endline);
+		step_charc(&s, +1, endline);
 		len++;
 	}
 	return (len);
@@ -186,9 +186,9 @@ public int len_cmdbuf(void)
  * {{ Returning pwidth and bswidth separately is a historical artifact
  *    since they're always the same. Maybe clean this up someday. }}
  */
-static char * cmd_step_common(char *p, LWCHAR ch, int len, int *pwidth, int *bswidth)
+static constant char * cmd_step_common(char *p, LWCHAR ch, size_t len, int *pwidth, int *bswidth)
 {
-	char *pr;
+	constant char *pr;
 	int width;
 
 	if (len == 1)
@@ -221,23 +221,23 @@ static char * cmd_step_common(char *p, LWCHAR ch, int len, int *pwidth, int *bsw
 /*
  * Step a pointer one character right in the command buffer.
  */
-static char * cmd_step_right(char **pp, int *pwidth, int *bswidth)
+static constant char * cmd_step_right(char **pp, int *pwidth, int *bswidth)
 {
 	char *p = *pp;
 	LWCHAR ch = step_char(pp, +1, p + strlen(p));
 
-	return cmd_step_common(p, ch, *pp - p, pwidth, bswidth);
+	return cmd_step_common(p, ch, ptr_diff(*pp, p), pwidth, bswidth);
 }
 
 /*
  * Step a pointer one character left in the command buffer.
  */
-static char * cmd_step_left(char **pp, int *pwidth, int *bswidth)
+static constant char * cmd_step_left(char **pp, int *pwidth, int *bswidth)
 {
 	char *p = *pp;
 	LWCHAR ch = step_char(pp, -1, cmdbuf);
 
-	return cmd_step_common(*pp, ch, p - *pp, pwidth, bswidth);
+	return cmd_step_common(*pp, ch, ptr_diff(p, *pp), pwidth, bswidth);
 }
 
 /*
@@ -278,7 +278,7 @@ public void cmd_repaint(constant char *old_cp)
 	{
 		char *np = cp;
 		int width;
-		char *pr = cmd_step_right(&np, &width, NULL);
+		constant char *pr = cmd_step_right(&np, &width, NULL);
 		if (cmd_col + width >= sc_width)
 			break;
 		cp = np;
@@ -289,7 +289,7 @@ public void cmd_repaint(constant char *old_cp)
 	{
 		char *np = cp;
 		int width;
-		char *pr = cmd_step_right(&np, &width, NULL);
+		constant char *pr = cmd_step_right(&np, &width, NULL);
 		if (width > 0)
 			break;
 		cp = np;
@@ -374,7 +374,7 @@ static void cmd_rshift(void)
  */
 static int cmd_right(void)
 {
-	char *pr;
+	constant char *pr;
 	char *ncp;
 	int width;
 	
@@ -436,7 +436,7 @@ static int cmd_left(void)
 /*
  * Insert a char into the command buffer, at the current position.
  */
-static int cmd_ichar(char *cs, int clen)
+static int cmd_ichar(constant char *cs, size_t clen)
 {
 	char *s;
 	
@@ -644,9 +644,7 @@ static int cmd_updown(int action)
 	}
 
 	if (updown_match < 0)
-	{
-		updown_match = (int) (cp - cmdbuf);
-	}
+		updown_match = ptr_diff(cp, cmdbuf);
 
 	/*
 	 * Find the next history entry which matches.
@@ -901,17 +899,17 @@ static int cmd_edit(int c)
 /*
  * Insert a string into the command buffer, at the current position.
  */
-static int cmd_istr(char *str)
+static int cmd_istr(constant char *str)
 {
-	char *s;
+	constant char *endline = str + strlen(str);
+	constant char *s;
 	int action;
-	char *endline = str + strlen(str);
 	
 	for (s = str;  *s != '\0';  )
 	{
-		char *os = s;
-		step_char(&s, +1, endline);
-		action = cmd_ichar(os, s - os);
+		constant char *os = s;
+		step_charc(&s, +1, endline);
+		action = cmd_ichar(os, ptr_diff(s, os));
 		if (action != CC_OK)
 			return (action);
 	}
@@ -932,7 +930,7 @@ static char * delimit_word(void)
 	int delim_quoted = 0;
 	int meta_quoted = 0;
 	constant char *esc = get_meta_escape();
-	int esclen = (int) strlen(esc);
+	size_t esclen = strlen(esc);
 #endif
 	
 	/*
@@ -1039,8 +1037,8 @@ static void init_compl(void)
 	 */
 	if (tk_original != NULL)
 		free(tk_original);
-	tk_original = (char *) ecalloc(cp-word+1, sizeof(char));
-	strncpy(tk_original, word, cp-word);
+	tk_original = (char *) ecalloc(ptr_diff(cp,word)+1, sizeof(char));
+	strncpy(tk_original, word, ptr_diff(cp,word));
 	/*
 	 * Get the expanded filename.
 	 * This may result in a single filename, or
@@ -1072,7 +1070,7 @@ static void init_compl(void)
 /*
  * Return the next word in the current completion list.
  */
-static char * next_compl(int action, char *prev)
+static constant char * next_compl(int action, constant char *prev)
 {
 	switch (action)
 	{
@@ -1093,7 +1091,7 @@ static char * next_compl(int action, char *prev)
  */
 static int cmd_complete(int action)
 {
-	char *s;
+	constant char *s;
 
 	if (!in_completion || action == EC_EXPAND)
 	{
@@ -1190,7 +1188,7 @@ fail:
 public int cmd_char(int c)
 {
 	int action;
-	int len;
+	size_t len;
 
 	if (!utf_mode)
 	{
@@ -1284,7 +1282,7 @@ public int cmd_char(int c)
  */
 public LINENUM cmd_int(long *frac)
 {
-	char *p;
+	constant char *p;
 	LINENUM n = 0;
 	int err;
 
@@ -1308,7 +1306,7 @@ public LINENUM cmd_int(long *frac)
 /*
  * Return a pointer to the command buffer.
  */
-public char * get_cmdbuf(void)
+public constant char * get_cmdbuf(void)
 {
 	if (cmd_mbc_buf_index < cmd_mbc_buf_len)
 		/* Don't return buffer containing an incomplete multibyte char. */
@@ -1320,7 +1318,7 @@ public char * get_cmdbuf(void)
 /*
  * Return the last (most recent) string in the current command history.
  */
-public char * cmd_lastpattern(void)
+public constant char * cmd_lastpattern(void)
 {
 	if (curr_mlist == NULL)
 		return (NULL);
@@ -1344,7 +1342,7 @@ static int mlist_size(struct mlist *ml)
  */
 static char * histfile_find(int must_exist)
 {
-	char *home = lgetenv("HOME");
+	constant char *home = lgetenv("HOME");
 	char *name = NULL;
 
 	/* Try in $XDG_STATE_HOME, then in $HOME/.local/state, then in $XDG_DATA_HOME, then in $HOME. */
@@ -1371,7 +1369,8 @@ static char * histfile_find(int must_exist)
 
 static char * histfile_name(int must_exist)
 {
-	char *name;
+	constant char *name;
+	char *wname;
 
 	/* See if filename is explicitly specified by $LESSHISTFILE. */
 	name = lgetenv("LESSHISTFILE");
@@ -1387,27 +1386,26 @@ static char * histfile_name(int must_exist)
 	if (strcmp(LESSHISTFILE, "") == 0 || strcmp(LESSHISTFILE, "-") == 0)
 		return (NULL);
 
-	name = NULL;
+	wname = NULL;
 	if (!must_exist)
 	{
 	 	/* If we're writing the file and the file already exists, use it. */
-		name = histfile_find(1);
+		wname = histfile_find(1);
 	}
-	if (name == NULL)
-		name = histfile_find(must_exist);
-	return (name);
+	if (wname == NULL)
+		wname = histfile_find(must_exist);
+	return (wname);
 }
 
 /*
  * Read a .lesshst file and call a callback for each line in the file.
  */
-static void read_cmdhist2(void (*action)(void*,struct mlist*,char*), void *uparam, int skip_search, int skip_shell)
+static void read_cmdhist2(void (*action)(void*,struct mlist*,constant char*), void *uparam, int skip_search, int skip_shell)
 {
 	struct mlist *ml = NULL;
 	char line[CMDBUF_SIZE];
 	char *filename;
 	FILE *f;
-	char *p;
 	int *skip = NULL;
 
 	filename = histfile_name(1);
@@ -1425,6 +1423,7 @@ static void read_cmdhist2(void (*action)(void*,struct mlist*,char*), void *upara
 	}
 	while (fgets(line, sizeof(line), f) != NULL)
 	{
+		char *p;
 		for (p = line;  *p != '\0';  p++)
 		{
 			if (*p == '\n' || *p == '\r')
@@ -1466,7 +1465,7 @@ static void read_cmdhist2(void (*action)(void*,struct mlist*,char*), void *upara
 	fclose(f);
 }
 
-static void read_cmdhist(void (*action)(void*,struct mlist*,char*), void *uparam, int skip_search, int skip_shell)
+static void read_cmdhist(void (*action)(void*,struct mlist*,constant char*), void *uparam, int skip_search, int skip_shell)
 {
 	if (!secure_allow(SF_HISTORY))
 		return;
@@ -1474,12 +1473,12 @@ static void read_cmdhist(void (*action)(void*,struct mlist*,char*), void *uparam
 	(*action)(uparam, NULL, NULL); /* signal end of file */
 }
 
-static void addhist_init(void *uparam, struct mlist *ml, char *string)
+static void addhist_init(void *uparam, struct mlist *ml, constant char *string)
 {
 	if (ml != NULL)
 		cmd_addhist(ml, string, 0);
 	else if (string != NULL)
-		restore_mark((char*)string); /* stupid const cast */
+		restore_mark(string);
 }
 #endif /* CMD_HISTORY */
 
@@ -1525,7 +1524,7 @@ static void write_mlist(struct mlist *ml, FILE *f)
 /*
  * Make a temp name in the same directory as filename.
  */
-static char * make_tempname(char *filename)
+static char * make_tempname(constant char *filename)
 {
 	char lastch;
 	char *tempname = ecalloc(1, strlen(filename)+1);
@@ -1546,7 +1545,7 @@ struct save_ctx
  * At the end of each mlist, append any new entries
  * created during this session.
  */
-static void copy_hist(void *uparam, struct mlist *ml, char *string)
+static void copy_hist(void *uparam, struct mlist *ml, constant char *string)
 {
 	struct save_ctx *ctx = (struct save_ctx *) uparam;
 
@@ -1632,7 +1631,7 @@ public void save_cmdhist(void)
 	int skip_search;
 	int skip_shell;
 	struct save_ctx ctx;
-	char *s;
+	constant char *s;
 	FILE *fout = NULL;
 	int histsize = 0;
 

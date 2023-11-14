@@ -23,7 +23,7 @@
 static struct loption *pendopt;
 public int plusoption = FALSE;
 
-static char *optstring(char *s, char **p_str, char *printopt, char *validchars);
+static constant char *optstring(constant char *s, char **p_str, constant char *printopt, constant char *validchars);
 static int flip_triple(int val, int lc);
 
 extern int less_is_more;
@@ -34,7 +34,7 @@ extern int opt_use_backslash;
 /*
  * Return a printable description of an option.
  */
-static char * opt_desc(struct loption *o)
+static constant char * opt_desc(struct loption *o)
 {
 	static char buf[OPTNAME_MAX + 10];
 	if (o->oletter == OLETTER_NONE)
@@ -48,7 +48,7 @@ static char * opt_desc(struct loption *o)
  * Return a string suitable for printing as the "name" of an option.
  * For example, if the option letter is 'x', just return "-x".
  */
-public char * propt(int c)
+public constant char * propt(int c)
 {
 	static char buf[MAX_PRCHAR_LEN+2];
 
@@ -60,12 +60,12 @@ public char * propt(int c)
  * Scan an argument (either from the command line or from the 
  * LESS environment variable) and process it.
  */
-public void scan_option(char *s)
+public void scan_option(constant char *s)
 {
 	struct loption *o;
 	int optc;
-	char *optname;
-	char *printopt;
+	constant char *optname;
+	constant char *printopt;
 	char *str;
 	int set_default;
 	int lc;
@@ -93,7 +93,7 @@ public void scan_option(char *s)
 				break;
 			case NUMBER:
 				printopt = opt_desc(pendopt);
-				*(pendopt->ovar) = getnum(&s, printopt, (int*)NULL);
+				*(pendopt->ovar) = getnumc(&s, printopt, (int*)NULL);
 				break;
 			}
 		}
@@ -120,18 +120,19 @@ public void scan_option(char *s)
 			 * "--" indicates an option name instead of a letter.
 			 */
 			if (*s == '-')
-			{
 				optname = ++s;
-				break;
-			}
 			/*
-			 * "-+" means set these options back to their defaults.
-			 * (They may have been set otherwise by previous 
-			 * options.)
+			 * "-+" or "--+" means set these options back to their defaults.
+			 * (They may have been set otherwise by previous options.)
 			 */
 			set_default = (*s == '+');
 			if (set_default)
 				s++;
+			if (optname != NULL)
+			{
+				optname = s;
+				break;
+			}
 			continue;
 		case '+':
 			/*
@@ -281,7 +282,7 @@ public void scan_option(char *s)
 			}
 			if (o->otype & UNSUPPORTED)
 				break;
-			*(o->ovar) = getnum(&s, printopt, (int*)NULL);
+			*(o->ovar) = getnumc(&s, printopt, (int*)NULL);
 			break;
 		}
 		/*
@@ -303,7 +304,7 @@ public void scan_option(char *s)
  *      OPT_UNSET       set to the default value
  *      OPT_SET         set to the inverse of the default value
  */
-public void toggle_option(struct loption *o, int lower, char *s, int how_toggle)
+public void toggle_option(struct loption *o, int lower, constant char *s, int how_toggle)
 {
 	int num;
 	int no_prompt;
@@ -419,7 +420,7 @@ public void toggle_option(struct loption *o, int lower, char *s, int how_toggle)
 			switch (how_toggle)
 			{
 			case OPT_TOGGLE:
-				num = getnum(&s, NULL, &err);
+				num = getnumc(&s, NULL, &err);
 				if (!err)
 					*(o->ovar) = num;
 				break;
@@ -508,7 +509,7 @@ public int opt_has_param(struct loption *o)
  * Return the prompt to be used for a given option letter.
  * Only string and number valued options have prompts.
  */
-public char * opt_prompt(struct loption *o)
+public constant char * opt_prompt(struct loption *o)
 {
 	if (o == NULL || (o->otype & (STRING|NUMBER)) == 0)
 		return ("?");
@@ -519,7 +520,7 @@ public char * opt_prompt(struct loption *o)
  * If the specified option can be toggled, return NULL.
  * Otherwise return an appropriate error message.
  */
-public char * opt_toggle_disallowed(int c)
+public constant char * opt_toggle_disallowed(int c)
 {
 	switch (c)
 	{
@@ -546,7 +547,7 @@ public int isoptpending(void)
 /*
  * Print error message about missing string.
  */
-static void nostring(char *printopt)
+static void nostring(constant char *printopt)
 {
 	PARG parg;
 	parg.p_string = printopt;
@@ -571,9 +572,9 @@ public void nopendopt(void)
  *   "d" indicates a string of one or more digits (0-9)
  *   "," indicates a comma-separated list of digit strings is allowed
  */
-static char * optstring(char *s, char **p_str, char *printopt, char *validchars)
+static constant char * optstring(constant char *s, char **p_str, constant char *printopt, constant char *validchars)
 {
-	char *p;
+	constant char *p;
 	char *out;
 
 	if (*s == '\0')
@@ -632,7 +633,7 @@ static char * optstring(char *s, char **p_str, char *printopt, char *validchars)
 
 /*
  */
-static int num_error(char *printopt, int *errp, int overflow)
+static int num_error(constant char *printopt, int *errp, int overflow)
 {
 	PARG parg;
 
@@ -657,13 +658,13 @@ static int num_error(char *printopt, int *errp, int overflow)
  * Like atoi(), but takes a pointer to a char *, and updates
  * the char * to point after the translated number.
  */
-public int getnum(char **sp, char *printopt, int *errp)
+public int getnumc(constant char **sp, constant char *printopt, int *errp)
 {
-	char *s;
+	constant char *s = *sp;
 	int n;
 	int neg;
 
-	s = skipsp(*sp);
+	s = skipspc(s);
 	neg = FALSE;
 	if (*s == '-')
 	{
@@ -673,7 +674,7 @@ public int getnum(char **sp, char *printopt, int *errp)
 	if (*s < '0' || *s > '9')
 		return (num_error(printopt, errp, FALSE));
 
-	n = lstrtoi(s, sp, 10);
+	n = lstrtoic(s, sp, 10);
 	if (n < 0)
 		return (num_error(printopt, errp, TRUE));
 	if (errp != NULL)
@@ -683,19 +684,27 @@ public int getnum(char **sp, char *printopt, int *errp)
 	return (n);
 }
 
+public int getnum(char **sp, constant char *printopt, int *errp)
+{
+	constant char *cs = *sp;
+	int r = getnumc(&cs, printopt, errp);
+	*sp = (char *) cs;
+	return r;
+}
+
 /*
  * Translate a string into a fraction, represented by the part of a
  * number which would follow a decimal point.
  * The value of the fraction is returned as parts per NUM_FRAC_DENOM.
  * That is, if "n" is returned, the fraction intended is n/NUM_FRAC_DENOM.
  */
-public long getfraction(char **sp, char *printopt, int *errp)
+public long getfraction(constant char **sp, constant char *printopt, int *errp)
 {
-	char *s;
+	constant char *s;
 	long frac = 0;
 	int fraclen = 0;
 
-	s = skipsp(*sp);
+	s = skipspc(*sp);
 	if (*s < '0' || *s > '9')
 		return (num_error(printopt, errp, FALSE));
 
@@ -720,13 +729,13 @@ public long getfraction(char **sp, char *printopt, int *errp)
  */
 public void init_unsupport(void)
 {
-	char *s = lgetenv("LESS_UNSUPPORT");
+	constant char *s = lgetenv("LESS_UNSUPPORT");
 	if (isnullenv(s))
 		return;
 	for (;;)
 	{
 		struct loption *opt;
-		s = skipsp(s);
+		s = skipspc(s);
 		if (*s == '\0') break;
 		if (*s == '-' && *++s == '\0') break;
 		if (*s == '-') /* long option name */

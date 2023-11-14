@@ -345,7 +345,7 @@ public void unmark(IFILE ifile)
 public void mark_check_ifile(IFILE ifile)
 {
 	int i;
-	char *filename = get_real_filename(ifile);
+	constant char *filename = get_real_filename(ifile);
 
 	for (i = 0;  i < NMARKS;  i++)
 	{
@@ -366,7 +366,7 @@ public void mark_check_ifile(IFILE ifile)
 /*
  * Save marks to history file.
  */
-public void save_marks(FILE *fout, char *hdr)
+public void save_marks(FILE *fout, constant char *hdr)
 {
 	int i;
 
@@ -376,7 +376,7 @@ public void save_marks(FILE *fout, char *hdr)
 	fprintf(fout, "%s\n", hdr);
 	for (i = 0;  i < NMARKS;  i++)
 	{
-		char *filename;
+		constant char *filename;
 		struct mark *m = &marks[i];
 		char pos_str[INT_STRLEN_BOUND(m->m_scrpos.pos) + 2];
 		if (m->m_scrpos.pos == NULL_POSITION)
@@ -394,7 +394,7 @@ public void save_marks(FILE *fout, char *hdr)
 /*
  * Restore one mark from the history file.
  */
-public void restore_mark(char *line)
+public void restore_mark(constant char *line)
 {
 	struct mark *m;
 	int ln;
@@ -408,7 +408,7 @@ public void restore_mark(char *line)
 	if (m == NULL)
 		return;
 	skip_whitespace;
-	ln = lstrtoi(line, &line, 10);
+	ln = lstrtoic(line, &line, 10);
 	if (ln < 0)
 		return;
 	if (ln < 1)
@@ -416,7 +416,7 @@ public void restore_mark(char *line)
 	if (ln > sc_height)
 		ln = sc_height;
 	skip_whitespace;
-	pos = lstrtopos(line, &line, 10);
+	pos = lstrtoposc(line, &line, 10);
 	if (pos < 0)
 		return;
 	skip_whitespace;

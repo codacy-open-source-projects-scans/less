@@ -42,7 +42,7 @@ extern int header_lines;
 extern int header_cols;
 #if HILITE_SEARCH
 extern int hilite_search;
-extern int size_linebuf;
+extern size_t size_linebuf;
 extern int squished;
 extern int can_goto_line;
 static int hide_hilite;
@@ -129,14 +129,14 @@ public int is_caseless;
 /*
  * Are there any uppercase letters in this string?
  */
-static int is_ucase(char *str)
+static int is_ucase(constant char *str)
 {
-	char *str_end = str + strlen(str);
+	constant char *str_end = str + strlen(str);
 	LWCHAR ch;
 
 	while (str < str_end)
 	{
-		ch = step_char(&str, +1, str_end);
+		ch = step_charc(&str, +1, str_end);
 		if (IS_UPPER(ch))
 			return (1);
 	}
@@ -159,7 +159,7 @@ static void clear_pattern(struct pattern_info *info)
 /*
  * Compile and save a search pattern.
  */
-static int set_pattern(struct pattern_info *info, char *pattern, int search_type, int show_error)
+static int set_pattern(struct pattern_info *info, constant char *pattern, int search_type, int show_error)
 {
 	/*
 	 * Ignore case if -I is set OR
@@ -573,18 +573,18 @@ public POSITION prev_unfiltered(POSITION pos)
 	return (pos);
 }
 
-static void shift_visible(int start_off, int end_off, int line_len)
+static void shift_visible(size_t start_off, size_t end_off, size_t line_len)
 {
-	int swidth = sc_width - line_pfx_width();
+	size_t swidth = (size_t) sc_width - line_pfx_width();
 	int new_hshift;
 	if (end_off < swidth) /* whole string is in first screen */
 		new_hshift = 0;
 	else if (start_off >= line_len - swidth) /* whole string is in last screen */
-		new_hshift = line_len - swidth;
-	else if (start_off > hshift && end_off < hshift + swidth)
+		new_hshift = (int) (line_len - swidth);
+	else if (start_off > (size_t) hshift && end_off < (size_t) hshift + swidth) /*{{type-issue}}*/
 		new_hshift = hshift; /* already visible; leave hshift unchanged */
 	else /* shift it to column match_shift */
-		new_hshift = (start_off < match_shift) ? 0 : (start_off - match_shift);
+		new_hshift = (start_off < (size_t) match_shift) ? 0 : (int) (start_off - (size_t) match_shift); /*{{type-issue}}*/
 	if (new_hshift != hshift)
 	{
 		hshift = new_hshift;
@@ -661,7 +661,7 @@ static struct hilite_storage * hlist_getstorage(struct hilite_tree *anchor)
 	}
 
 	s = (struct hilite_storage *) ecalloc(1, sizeof(struct hilite_storage));
-	s->nodes = (struct hilite_node *) ecalloc(capacity, sizeof(struct hilite_node));
+	s->nodes = (struct hilite_node *) ecalloc((size_t) capacity, sizeof(struct hilite_node));
 	s->capacity = capacity;
 	s->used = 0;
 	s->next = NULL;
@@ -923,12 +923,12 @@ static void add_hilite(struct hilite_tree *anchor, struct hilite *hl)
 /*
  * Highlight every character in a range of displayed characters.
  */
-static void create_hilites(POSITION linepos, char *line, char *sp, char *ep, int attr, int *chpos)
+static void create_hilites(POSITION linepos, constant char *line, constant char *sp, constant char *ep, int attr, int *chpos)
 {
-	int start_index = sp - line;
-	int end_index = ep - line;
+	size_t start_index = ptr_diff(sp, line); /*{{type-issue}}*/
+	size_t end_index = ptr_diff(ep, line);
 	struct hilite hl;
-	int i;
+	size_t i;
 
 	/* Start the first hilite. */
 	hl.hl_startpos = linepos + chpos[start_index];
@@ -962,10 +962,10 @@ static void create_hilites(POSITION linepos, char *line, char *sp, char *ep, int
  * the current pattern.
  * sp,ep delimit the first match already found.
  */
-static void hilite_line(POSITION linepos, char *line, int line_len, int *chpos, char **sp, char **ep, int nsp, int cvt_ops)
+static void hilite_line(POSITION linepos, constant char *line, size_t line_len, int *chpos, constant char **sp, constant char **ep, int nsp, int cvt_ops)
 {
-	char *searchp;
-	char *line_end = line + line_len;
+	constant char *searchp;
+	constant char *line_end = line + line_len;
 
 	/*
 	 * sp[0] and ep[0] delimit the first match in the line.
@@ -981,7 +981,7 @@ static void hilite_line(POSITION linepos, char *line, int line_len, int *chpos, 
 	 */
 	searchp = line;
 	do {
-		char *lep = sp[0];
+		constant char *lep = sp[0];
 		int i;
 		if (sp[0] == NULL || ep[0] == NULL)
 			break;
@@ -1013,7 +1013,7 @@ static void hilite_line(POSITION linepos, char *line, int line_len, int *chpos, 
 		else /* end of line */
 			break;
 	} while (match_pattern(info_compiled(&search_info), search_info.text,
-			searchp, line_end - searchp, sp, ep, nsp, 1, search_info.search_type));
+			searchp, ptr_diff(line_end, searchp), sp, ep, nsp, 1, search_info.search_type));
 }
 #endif
 
@@ -1116,7 +1116,7 @@ static POSITION search_pos(int search_type)
 		}
 		pos = position(sindex);
 		if (add_one)
-			pos = forw_raw_line(pos, (char **)NULL, (int *)NULL);
+			pos = forw_raw_line(pos, NULL, NULL);
 	}
 
 	/*
@@ -1147,7 +1147,7 @@ static POSITION search_pos(int search_type)
  * If so, add an entry to the filter list.
  */
 #if HILITE_SEARCH
-static int matches_filters(POSITION pos, char *cline, int line_len, int *chpos, POSITION linepos, char **sp, char **ep, int nsp)
+static int matches_filters(POSITION pos, char *cline, size_t line_len, int *chpos, POSITION linepos, constant char **sp, constant char **ep, int nsp)
 {
 	struct pattern_info *filter;
 
@@ -1196,21 +1196,21 @@ static POSITION get_lastlinepos(POSITION pos, POSITION tpos, int sheight)
  */
 static int search_range(POSITION pos, POSITION endpos, int search_type, int matches, int maxlines, POSITION *plinepos, POSITION *pendpos, POSITION *plastlinepos)
 {
-	char *line;
+	constant char *line;
 	char *cline;
-	int line_len;
+	size_t line_len;
 	LINENUM linenum;
 	#define NSP (NUM_SEARCH_COLORS+2)
-	char *sp[NSP];
-	char *ep[NSP];
+	constant char *sp[NSP];
+	constant char *ep[NSP];
 	int line_match;
 	int cvt_ops;
-	int cvt_len;
+	size_t cvt_len;
 	int *chpos;
 	POSITION linepos, oldpos;
 	int skip_bytes = 0;
-	int swidth = sc_width - line_pfx_width();
-	int sheight = sc_height - sindex_from_sline(jump_sline);
+	size_t swidth = (size_t) sc_width - line_pfx_width(); /*{{type-issue}}*/
+	size_t sheight = (size_t) sc_height - sindex_from_sline(jump_sline);
 
 	linenum = find_linenum(pos);
 	if (nosearch_headers && linenum <= header_lines)
@@ -1405,8 +1405,8 @@ static int search_range(POSITION pos, POSITION endpos, int search_type, int matc
 						 */
 						if (sp[0] != NULL && ep[0] != NULL)
 						{
-							int start_off = sp[0] - cline;
-							int end_off = ep[0] - cline;
+							size_t start_off = ptr_diff(sp[0], cline);
+							size_t end_off = ptr_diff(ep[0], cline);
 							shift_visible(start_off, end_off, line_len);
 						}
 					} else if (plastlinepos != NULL)
@@ -1421,7 +1421,7 @@ static int search_range(POSITION pos, POSITION endpos, int search_type, int matc
 						 */
 						if (ep[0] != NULL)
 						{
-							int end_off = ep[0] - cline;
+							size_t end_off = ptr_diff(ep[0], cline);
 							if (end_off >= swidth * sheight / 4) /* heuristic */
 								*plastlinepos = get_lastlinepos(linepos, linepos + chpos[end_off], sheight);
 						}
@@ -1445,7 +1445,7 @@ static int search_range(POSITION pos, POSITION endpos, int search_type, int matc
 static int hist_pattern(int search_type)
 {
 #if CMD_HISTORY
-	char *pattern;
+	constant char *pattern;
 
 	set_mlist(ml_search, 0);
 	pattern = cmd_lastpattern();
@@ -1503,7 +1503,7 @@ public void chg_caseless(void)
  * Caller may continue the search in another file 
  * if less than n matches are found in this file.
  */
-public int search(int search_type, char *pattern, int n)
+public int search(int search_type, constant char *pattern, int n)
 {
 	POSITION pos;
 	POSITION opos;
@@ -1665,11 +1665,11 @@ public void prep_hilite(POSITION spos, POSITION epos, int maxlines)
 	int result;
 	int i;
 
-/*
- * Search beyond where we're asked to search, so the prep region covers
- * more than we need.  Do one big search instead of a bunch of small ones.
- */
-#define SEARCH_MORE (3*size_linebuf)
+	/*
+	 * Search beyond where we're asked to search, so the prep region covers
+	 * more than we need.  Do one big search instead of a bunch of small ones.
+	 */
+	POSITION SEARCH_MORE = (POSITION) (3*size_linebuf);
 
 	if (!prev_pattern(&search_info) && !is_filtering())
 		return;
@@ -1678,7 +1678,7 @@ public void prep_hilite(POSITION spos, POSITION epos, int maxlines)
 	 * Make sure our prep region always starts at the beginning of
 	 * a line. (search_range takes care of the end boundary below.)
 	 */
-	spos = back_raw_line(spos+1, (char **)NULL, (int *)NULL);
+	spos = back_raw_line(spos+1, NULL, NULL);
 
 	/*
 	 * If we're limited to a max number of lines, figure out the
@@ -1690,7 +1690,7 @@ public void prep_hilite(POSITION spos, POSITION epos, int maxlines)
 	{
 		max_epos = spos;
 		for (i = 0;  i < maxlines;  i++)
-			max_epos = forw_raw_line(max_epos, (char **)NULL, (int *)NULL);
+			max_epos = forw_raw_line(max_epos, NULL, NULL);
 	}
 
 	/*
@@ -1791,7 +1791,7 @@ public void prep_hilite(POSITION spos, POSITION epos, int maxlines)
 				if (new_epos >= nprep_endpos && is_filtered(new_epos-1))
 				{
 					spos = nprep_endpos;
-					epos = forw_raw_line(nprep_endpos, (char **)NULL, (int *)NULL);
+					epos = forw_raw_line(nprep_endpos, NULL, NULL);
 					if (epos == NULL_POSITION)
 						break;
 					maxlines = 1;
@@ -1804,7 +1804,7 @@ public void prep_hilite(POSITION spos, POSITION epos, int maxlines)
 				if (nprep_startpos > 0 && is_filtered(nprep_startpos))
 				{
 					epos = nprep_startpos;
-					spos = back_raw_line(nprep_startpos, (char **)NULL, (int *)NULL);
+					spos = back_raw_line(nprep_startpos, NULL, NULL);
 					if (spos == NULL_POSITION)
 						break;
 					nprep_startpos = spos;
@@ -1822,7 +1822,7 @@ public void prep_hilite(POSITION spos, POSITION epos, int maxlines)
 /*
  * Set the pattern to be used for line filtering.
  */
-public void set_filter_pattern(char *pattern, int search_type)
+public void set_filter_pattern(constant char *pattern, int search_type)
 {
 	struct pattern_info *filter;
 
@@ -1872,7 +1872,7 @@ public int is_filtering(void)
  */
 public int reg_show_error = 1;
 
-void regerror(char *s)
+void regerror(constant char *s)
 {
 	PARG parg;
 

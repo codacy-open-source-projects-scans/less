@@ -36,16 +36,6 @@
 #undef HAVE_SIGSETMASK
 #endif
 
-/*
- * Language details.
- */
-#if HAVE_CONST
-#define constant        const
-#else
-#define constant
-#endif
-
-#define public          /* PUBLIC FUNCTION */
 
 /* Library function declarations */
 
@@ -92,6 +82,8 @@
 /* True if the integer expression E, after promotion, is signed.  */
 #define signed_expr(e) ((TRUE ? 0 : e) - 1 < 0)
 #endif
+
+#include "lang.h"
 
 #if defined UINTMAX_MAX
 typedef uintmax_t uintmax;
@@ -340,7 +332,7 @@ struct scrpos
 
 typedef union parg
 {
-        char *p_string;
+        constant char *p_string;
         int p_int;
         LINENUM p_linenum;
         char p_char;
@@ -361,8 +353,8 @@ struct wchar_range
 
 struct wchar_range_table 
 {
-        struct wchar_range *table;
-        int count;
+	struct wchar_range *table;
+	unsigned int count;
 };
 
 #if HAVE_POLL
@@ -656,6 +648,9 @@ void inttoa(int, char*, int);
 int lstrtoi(char*, char**, int);
 POSITION lstrtopos(char*, char**, int);
 unsigned long lstrtoul(char*, char**, int);
+int lstrtoic(constant char*, constant char**, int);
+POSITION lstrtoposc(constant char*, constant char**, int);
+unsigned long lstrtoulc(constant char*, constant char**, int);
 #if MSDOS_COMPILER==WIN32C
 int pclose(FILE*);
 #endif

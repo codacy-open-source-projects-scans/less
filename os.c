@@ -83,13 +83,10 @@ extern char intr_char;
 #if !MSDOS_COMPILER
 extern int tty;
 #endif
-#if LESSTEST
-extern char *ttyin_name;
-#endif /*LESSTEST*/
 
 public void init_poll(void)
 {
-	char *delay = lgetenv("LESS_DATA_DELAY");
+	constant char *delay = lgetenv("LESS_DATA_DELAY");
 	int idelay = (delay == NULL) ? 0 : atoi(delay);
 	if (idelay > 0)
 		waiting_for_data_delay = idelay;
@@ -125,7 +122,7 @@ static int check_poll(int fd, int tty)
 	}
 	poll(poller, 2, timeout);
 #if LESSTEST
-	if (ttyin_name == NULL) /* Check for ^X only on a real tty. */
+	if (!is_lesstest()) /* Check for ^X only on a real tty. */
 #endif /*LESSTEST*/
 	{
 		if (poller[1].revents & POLLIN) 
@@ -166,9 +163,9 @@ public int supports_ctrl_x(void)
  * A call to intread() from a signal handler will interrupt
  * any pending iread().
  */
-public int iread(int fd, unsigned char *buf, unsigned int len)
+public ssize_t iread(int fd, unsigned char *buf, size_t len)
 {
-	int n;
+	ssize_t n;
 
 start:
 #if MSDOS_COMPILER==WIN32C
@@ -359,11 +356,11 @@ static char * strerror(int err)
 /*
  * errno_message: Return an error message based on the value of "errno".
  */
-public char * errno_message(char *filename)
+public char * errno_message(constant char *filename)
 {
 	char *p;
 	char *m;
-	int len;
+	size_t len;
 #if HAVE_ERRNO
 #if MUST_DEFINE_ERRNO
 	extern int errno;
@@ -372,7 +369,7 @@ public char * errno_message(char *filename)
 #else
 	p = "cannot open";
 #endif
-	len = (int) (strlen(filename) + strlen(p) + 3);
+	len = strlen(filename) + strlen(p) + 3;
 	m = (char *) ecalloc(len, sizeof(char));
 	SNPRINTF2(m, len, "%s: %s", filename, p);
 	return (m);
@@ -382,11 +379,11 @@ public char * errno_message(char *filename)
  * Return a description of a signal.
  * The return value is good until the next call to this function.
  */
-public char * signal_message(int sig)
+public constant char * signal_message(int sig)
 {
 	static char sigbuf[sizeof("Signal ") + INT_STRLEN_BOUND(sig) + 1];
 #if HAVE_STRSIGNAL
-	char *description = strsignal(sig);
+	constant char *description = strsignal(sig);
 	if (description)
 		return description;
 #endif
@@ -456,7 +453,7 @@ char * strchr(char *s, char c)
 #endif
 
 #if !HAVE_MEMCPY
-void * memcpy(void *dst, void *src, int len)
+void * memcpy(void *dst, void *src, size_t len)
 {
 	char *dstp = (char *) dst;
 	char *srcp = (char *) src;
