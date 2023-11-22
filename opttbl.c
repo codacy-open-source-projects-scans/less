@@ -799,7 +799,7 @@ static int is_optchar(char c)
  * is updated to point after the matched name.
  * p_oname if non-NULL is set to point to the full option name.
  */
-public struct loption * findopt_name(constant char **p_optname, constant char **p_oname, int *p_err)
+public struct loption * findopt_name(constant char **p_optname, constant char **p_oname, lbool *p_ambig)
 {
 	constant char *optname = *p_optname;
 	struct loption *o;
@@ -809,8 +809,8 @@ public struct loption * findopt_name(constant char **p_optname, constant char **
 	struct loption *maxo = NULL;
 	struct optname *maxoname = NULL;
 	size_t maxlen = 0;
-	int ambig = 0;
-	int exact = 0;
+	lbool ambig = FALSE;
+	lbool exact = FALSE;
 
 	/*
 	 * Check all options.
@@ -843,7 +843,7 @@ public struct loption * findopt_name(constant char **p_optname, constant char **
 					 * and now there's another one that
 					 * matches the same length.
 					 */
-					ambig = 1;
+					ambig = TRUE;
 				else if (len > maxlen)
 				{
 					/*
@@ -853,21 +853,21 @@ public struct loption * findopt_name(constant char **p_optname, constant char **
 					maxo = o;
 					maxoname = oname;
 					maxlen = len;
-					ambig = 0;
-					exact = (len == (int)strlen(oname->oname));
+					ambig = FALSE;
+					exact = (len == strlen(oname->oname));
 				}
 				if (!(o->otype & TRIPLE))
 					break;
 			}
 		}
 	}
+	if (p_ambig != NULL)
+		*p_ambig = ambig;
 	if (ambig)
 	{
 		/*
 		 * Name matched more than one option.
 		 */
-		if (p_err != NULL)
-			*p_err = OPT_AMBIG;
 		return (NULL);
 	}
 	*p_optname = optname + maxlen;

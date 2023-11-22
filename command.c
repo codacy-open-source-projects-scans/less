@@ -73,7 +73,7 @@ static long fraction;           /* The fractional part of the number */
 static struct loption *curropt;
 static int opt_lower;
 static int optflag;
-static int optgetname;
+static lbool optgetname;
 static POSITION bottompos;
 static int save_hshift;
 static int save_bs_mode;
@@ -86,7 +86,8 @@ static char pipec;
 /* Stack of ungotten chars (via ungetcc) */
 struct ungot {
 	struct ungot *ug_next;
-	LWCHAR ug_char;
+	char ug_char;
+	lbool ug_end_command;
 };
 static struct ungot* ungot = NULL;
 
@@ -326,7 +327,7 @@ static void exec_mca(void)
 /*
  * Is a character an erase or kill char?
  */
-static int is_erase_char(LWCHAR c)
+static int is_erase_char(char c)
 {
 	return (c == erase_char || c == erase2_char || c == kill_char);
 }
@@ -334,7 +335,7 @@ static int is_erase_char(LWCHAR c)
 /*
  * Is a character a carriage return or newline?
  */
-static int is_newline_char(LWCHAR c)
+static int is_newline_char(char c)
 {
 	return (c == '\n' || c == '\r');
 }
@@ -342,7 +343,7 @@ static int is_newline_char(LWCHAR c)
 /*
  * Handle the first char of an option (after the initial dash).
  */
-static int mca_opt_first_char(LWCHAR c)
+static int mca_opt_first_char(char c)
 {
 	int no_prompt = (optflag & OPT_NO_PROMPT);
 	int flag = (optflag & ~OPT_NO_PROMPT);
@@ -393,11 +394,11 @@ static int mca_opt_first_char(LWCHAR c)
  * If so, display the complete name and stop 
  * accepting chars until user hits RETURN.
  */
-static int mca_opt_nonfirst_char(LWCHAR c)
+static int mca_opt_nonfirst_char(char c)
 {
 	constant char *p;
 	constant char *oname;
-	int err;
+	lbool ambig;
 
 	if (curropt != NULL)
 	{
@@ -419,8 +420,7 @@ static int mca_opt_nonfirst_char(LWCHAR c)
 	if (p == NULL)
 		return (MCA_MORE);
 	opt_lower = ASCII_IS_LOWER(p[0]);
-	err = 0;
-	curropt = findopt_name(&p, &oname, &err);
+	curropt = findopt_name(&p, &oname, &ambig);
 	if (curropt != NULL)
 	{
 		/*
@@ -438,7 +438,7 @@ static int mca_opt_nonfirst_char(LWCHAR c)
 			if (cmd_char(c) != CC_OK)
 				return (MCA_DONE);
 		}
-	} else if (err != OPT_AMBIG)
+	} else if (!ambig)
 	{
 		bell();
 	}
@@ -448,7 +448,7 @@ static int mca_opt_nonfirst_char(LWCHAR c)
 /*
  * Handle a char of an option toggle command.
  */
-static int mca_opt_char(LWCHAR c)
+static int mca_opt_char(char c)
 {
 	PARG parg;
 
@@ -526,7 +526,7 @@ public int norm_search_type(int st)
 /*
  * Handle a char of a search command.
  */
-static int mca_search_char(LWCHAR c)
+static int mca_search_char(char c)
 {
 	int flag = 0;
 
@@ -595,7 +595,7 @@ static int mca_search_char(LWCHAR c)
 /*
  * Handle a character of a multi-character command.
  */
-static int mca_char(LWCHAR c)
+static int mca_char(char c)
 {
 	int ret;
 
@@ -818,7 +818,7 @@ static void prompt(void)
 {
 	constant char *p;
 
-	if (ungot != NULL && ungot->ug_char != CHAR_END_COMMAND)
+	if (ungot != NULL && !ungot->ug_end_command)
 	{
 		/*
 		 * No prompt necessary if commands are from 
@@ -858,7 +858,7 @@ static void prompt(void)
 	{
 		WCHAR w[MAX_PATH+16];
 		p = pr_expand("Less?f - %f.");
-		MultiByteToWideChar(CP_ACP, 0, p, -1, w, sizeof(w)/sizeof(*w));
+		MultiByteToWideChar(CP_ACP, 0, p, -1, w, countof(w));
 		SetConsoleTitleW(w);
 	}
 #endif
@@ -895,7 +895,7 @@ static void prompt(void)
 #if MSDOS_COMPILER==WIN32C
 		WCHAR w[MAX_PATH*2];
 		char  a[MAX_PATH*2];
-		MultiByteToWideChar(less_acp, 0, p, -1, w, sizeof(w)/sizeof(*w));
+		MultiByteToWideChar(less_acp, 0, p, -1, w, countof(w));
 		WideCharToMultiByte(utf_mode ? CP_UTF8 : GetConsoleOutputCP(),
 		                    0, w, -1, a, sizeof(a), NULL, NULL);
 		p = a;
@@ -920,8 +920,9 @@ public void dispversion(void)
 /*
  * Return a character to complete a partial command, if possible.
  */
-static LWCHAR getcc_end_command(void)
+static char getcc_end_command(void)
 {
+	int ch;
 	switch (mca)
 	{
 	case A_DIGIT:
@@ -934,17 +935,23 @@ static LWCHAR getcc_end_command(void)
 		return ('\n'); 
 	default:
 		/* Some other incomplete command.  Let user complete it. */
-		return ((ungot == NULL) ? getchr() : 0);
+		if (ungot != NULL)
+			return ('\0');
+		ch = getchr();
+		if (ch < 0) ch = '\0';
+		return (char) ch;
 	}
 }
 
 /*
  * Get a command character from the ungotten stack.
  */
-static LWCHAR get_ungot(void)
+static char get_ungot(lbool *p_end_command)
 {
 	struct ungot *ug = ungot;
-	LWCHAR c = ug->ug_char;
+	char c = ug->ug_char;
+	if (p_end_command != NULL)
+		*p_end_command = ug->ug_end_command;
 	ungot = ug->ug_next;
 	free(ug);
 	return c;
@@ -956,7 +963,7 @@ static LWCHAR get_ungot(void)
 public void getcc_clear(void)
 {
 	while (ungot != NULL)
-		(void) get_ungot();
+		(void) get_ungot(NULL);
 }
 
 /*
@@ -965,9 +972,9 @@ public void getcc_clear(void)
  * but may come from ungotten characters
  * (characters previously given to ungetcc or ungetsc).
  */
-static LWCHAR getccu(void)
+static char getccu(void)
 {
-	LWCHAR c = 0;
+	int c = 0;
 	while (c == 0)
 	{
 		if (ungot == NULL)
@@ -975,27 +982,29 @@ static LWCHAR getccu(void)
 			/* Normal case: no ungotten chars.
 			 * Get char from the user. */
 			c = getchr();
+			if (c < 0) return ('\0');
 		} else
 		{
 			/* Ungotten chars available:
 			 * Take the top of stack (most recent). */
-			c = get_ungot();
-			if (c == CHAR_END_COMMAND)
+			lbool end_command;
+			c = get_ungot(&end_command);
+			if (end_command)
 				c = getcc_end_command();
 		}
 	}
-	return (c);
+	return ((char) c);
 }
 
 /*
  * Get a command character, but if we receive the orig sequence,
  * convert it to the repl sequence.
  */
-static LWCHAR getcc_repl(char constant *orig, char constant *repl, LWCHAR (*gr_getc)(void), void (*gr_ungetc)(LWCHAR))
+static char getcc_repl(char constant *orig, char constant *repl, char (*gr_getc)(void), void (*gr_ungetc)(char))
 {
-	LWCHAR c;
-	LWCHAR keys[16];
-	int ki = 0;
+	char c;
+	char keys[16];
+	size_t ki = 0;
 
 	c = (*gr_getc)();
 	if (orig == NULL || orig[0] == '\0')
@@ -1030,7 +1039,7 @@ static LWCHAR getcc_repl(char constant *orig, char constant *repl, LWCHAR (*gr_g
 /*
  * Get command character.
  */
-public LWCHAR getcc(void)
+public char getcc(void)
 {
 	/* Replace kent (keypad Enter) with a newline. */
 	return getcc_repl(kent, "\n", getccu, ungetcc);
@@ -1040,7 +1049,7 @@ public LWCHAR getcc(void)
  * "Unget" a command character.
  * The next getcc() will return this character.
  */
-public void ungetcc(LWCHAR c)
+public void ungetcc(char c)
 {
 	struct ungot *ug = (struct ungot *) ecalloc(1, sizeof(struct ungot));
 
@@ -1053,10 +1062,11 @@ public void ungetcc(LWCHAR c)
  * "Unget" a command character.
  * If any other chars are already ungotten, put this one after those.
  */
-public void ungetcc_back(LWCHAR c)
+static void ungetcc_back1(char c, lbool end_command)
 {
 	struct ungot *ug = (struct ungot *) ecalloc(1, sizeof(struct ungot));
 	ug->ug_char = c;
+	ug->ug_end_command = end_command;
 	ug->ug_next = NULL;
 	if (ungot == NULL)
 		ungot = ug;
@@ -1067,6 +1077,16 @@ public void ungetcc_back(LWCHAR c)
 			continue;
 		pu->ug_next = ug;
 	}
+}
+
+public void ungetcc_back(char c)
+{
+	ungetcc_back1(c, FALSE);
+}
+
+public void ungetcc_end_command(void)
+{
+	ungetcc_back1('\0', TRUE);
 }
 
 /*
@@ -1082,9 +1102,9 @@ public void ungetsc(constant char *s)
 /*
  * Peek the next command character, without consuming it.
  */
-public LWCHAR peekcc(void)
+public char peekcc(void)
 {
-	LWCHAR c = getcc();
+	char c = getcc();
 	ungetcc(c);
 	return c;
 }
@@ -1231,7 +1251,7 @@ static int forw_loop(int until_hilite)
  */
 public void commands(void)
 {
-	LWCHAR c;
+	char c;
 	int action;
 	constant char *cbuf;
 	constant char *msg;
@@ -1348,7 +1368,7 @@ public void commands(void)
 				 * want erase_char/kill_char to be treated
 				 * as line editing characters.
 				 */
-				char tbuf[2] = { (char) c, '\0' }; /*{{char-issue}}*/
+				constant char tbuf[2] = { c, '\0' };
 				action = fcmd_decode(tbuf, &extra);
 			}
 			/*
@@ -2027,7 +2047,7 @@ public void commands(void)
 					c = '.';
 				if (badmark(c))
 					break;
-				pipec = (char) c;
+				pipec = c;
 				start_mca(A_PIPE, "!", ml_shell, 0);
 				c = getcc();
 				goto again;

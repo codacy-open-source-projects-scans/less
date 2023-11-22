@@ -363,7 +363,7 @@ static void ilocale(void)
 /*
  * Define the printing format for control (or binary utf) chars.
  */
-public void setfmt(constant char *s, constant char **fmtvarptr, int *attrptr, constant char *default_fmt, int for_printf)
+public void setfmt(constant char *s, constant char **fmtvarptr, int *attrptr, constant char *default_fmt, lbool for_printf)
 {
 	if (s && utf_mode)
 	{
@@ -521,9 +521,10 @@ public int binary_char(LWCHAR c)
 /*
  * Is a given character a "control" character?
  */
-public int control_char(LWCHAR c)
+public lbool control_char(LWCHAR c)
 {
-	c &= 0377;
+	if (!is_ascii_char(c))
+		return FALSE;
 	return (chardef[c] & IS_CONTROL_CHAR);
 }
 
@@ -536,7 +537,7 @@ public constant char * prchar(LWCHAR c)
 	/* {{ This buffer can be overrun if LESSBINFMT is a long string. }} */
 	static char buf[MAX_PRCHAR_LEN+1];
 
-	c &= 0377;
+	c &= 0377; /*{{type-issue}}*/
 	if ((c < 128 || !utf_mode) && !control_char(c))
 		SNPRINTF1(buf, sizeof(buf), "%c", (int) c);
 	else if (c == ESC)
@@ -594,7 +595,7 @@ public constant char * prutfchar(LWCHAR ch)
 /*
  * Get the length of a UTF-8 character in bytes.
  */
-public int utf_len(unsigned char ch)
+public int utf_len(char ch)
 {
 	if ((ch & 0x80) == 0)
 		return 1;
@@ -617,36 +618,35 @@ public int utf_len(unsigned char ch)
 /*
  * Does the parameter point to the lead byte of a well-formed UTF-8 character?
  */
-public int is_utf8_well_formed(constant char *ss, int slen)
+public lbool is_utf8_well_formed(constant char *ss, int slen)
 {
 	int i;
 	int len;
-	constant unsigned char *s = (constant unsigned char *) ss;
+	unsigned char s0 = (unsigned char) ss[0];
 
-	if (IS_UTF8_INVALID(s[0]))
-		return (0);
+	if (IS_UTF8_INVALID(s0))
+		return (FALSE);
 
-	len = utf_len(s[0]);
+	len = utf_len(ss[0]);
 	if (len > slen)
-		return (0);
+		return (FALSE);
 	if (len == 1)
-		return (1);
+		return (TRUE);
 	if (len == 2)
 	{
-		if (s[0] < 0xC2)
-			return (0);
+		if (s0 < 0xC2)
+			return (FALSE);
 	} else
 	{
-		unsigned char mask;
-		mask = (~((1 << (8-len)) - 1)) & 0xFF;
-		if (s[0] == mask && (s[1] & mask) == 0x80)
-			return (0);
+		unsigned char mask = (unsigned char) (~((1 << (8-len)) - 1));
+		if (s0 == mask && (ss[1] & mask) == 0x80)
+			return (FALSE);
 	}
 
 	for (i = 1;  i < len;  i++)
-		if (!IS_UTF8_TRAIL(s[i]))
-			return (0);
-	return (1);
+		if (!IS_UTF8_TRAIL(ss[i]))
+			return (FALSE);
+	return (TRUE);
 }
 
 /*
@@ -666,7 +666,7 @@ public void utf_skip_to_lead(constant char **pp, constant char *limit)
 public LWCHAR get_wchar(constant char *sp)
 {
 	constant unsigned char *p = (constant unsigned char *) sp;
-	switch (utf_len(p[0]))
+	switch (utf_len(sp[0]))
 	{
 	case 1:
 	default:
@@ -819,7 +819,7 @@ public LWCHAR step_char(char **pp, signed int dir, constant char *limit)
 #define DECLARE_RANGE_TABLE_START(name) \
 	static struct wchar_range name##_array[] = {
 #define DECLARE_RANGE_TABLE_END(name) \
-	}; struct wchar_range_table name##_table = { name##_array, sizeof(name##_array)/sizeof(*name##_array) };
+	}; struct wchar_range_table name##_table = { name##_array, countof(name##_array) };
 
 DECLARE_RANGE_TABLE_START(compose)
 #include "compose.uni"
@@ -843,14 +843,14 @@ static struct wchar_range comb_table[] = {
 };
 
 
-static int is_in_table(LWCHAR ch, struct wchar_range_table *table)
+static lbool is_in_table(LWCHAR ch, struct wchar_range_table *table)
 {
 	unsigned int hi;
 	unsigned int lo;
 
 	/* Binary search in the table. */
 	if (table->table == NULL || table->count == 0 || ch < table->table[0].first)
-		return 0;
+		return FALSE;
 	lo = 0;
 	hi = table->count - 1;
 	while (lo <= hi)
@@ -861,18 +861,18 @@ static int is_in_table(LWCHAR ch, struct wchar_range_table *table)
 		else if (ch < table->table[mid].first)
 			hi = mid - 1;
 		else
-			return 1;
+			return TRUE;
 	}
-	return 0;
+	return FALSE;
 }
 
 /*
  * Is a character a UTF-8 composing character?
  * If a composing character follows any char, the two combine into one glyph.
  */
-public int is_composing_char(LWCHAR ch)
+public lbool is_composing_char(LWCHAR ch)
 {
-	if (is_in_table(ch, &user_prt_table)) return 0;
+	if (is_in_table(ch, &user_prt_table)) return FALSE;
 	return is_in_table(ch, &user_compose_table) ||
 	       is_in_table(ch, &compose_table) ||
 	       (bs_mode != BS_CONTROL && is_in_table(ch, &fmt_table));
@@ -881,9 +881,9 @@ public int is_composing_char(LWCHAR ch)
 /*
  * Should this UTF-8 character be treated as binary?
  */
-public int is_ubin_char(LWCHAR ch)
+public lbool is_ubin_char(LWCHAR ch)
 {
-	if (is_in_table(ch, &user_prt_table)) return 0;
+	if (is_in_table(ch, &user_prt_table)) return FALSE;
 	return is_in_table(ch, &user_ubin_table) ||
 	       is_in_table(ch, &ubin_table) ||
 	       (bs_mode == BS_CONTROL && is_in_table(ch, &fmt_table));
@@ -892,7 +892,7 @@ public int is_ubin_char(LWCHAR ch)
 /*
  * Is this a double width UTF-8 character?
  */
-public int is_wide_char(LWCHAR ch)
+public lbool is_wide_char(LWCHAR ch)
 {
 	return is_in_table(ch, &user_wide_table) ||
 	       is_in_table(ch, &wide_table);
@@ -903,16 +903,16 @@ public int is_wide_char(LWCHAR ch)
  * A combining char acts like an ordinary char, but if it follows
  * a specific char (not any char), the two combine into one glyph.
  */
-public int is_combining_char(LWCHAR ch1, LWCHAR ch2)
+public lbool is_combining_char(LWCHAR ch1, LWCHAR ch2)
 {
 	/* The table is small; use linear search. */
 	int i;
-	for (i = 0;  i < sizeof(comb_table)/sizeof(*comb_table);  i++)
+	for (i = 0;  i < countof(comb_table);  i++)
 	{
 		if (ch1 == comb_table[i].first &&
 		    ch2 == comb_table[i].last)
-			return 1;
+			return TRUE;
 	}
-	return 0;
+	return FALSE;
 }
 

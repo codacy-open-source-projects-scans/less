@@ -38,8 +38,8 @@ extern int mousecap;
 extern int sc_height;
 
 /* "content" is lesskey source, never binary. */
-static void add_content_table(int (*call_lesskey)(constant char *, int), constant char *envname, int sysvar);
-static int add_hometable(int (*call_lesskey)(constant char *, int), constant char *envname, constant char *def_filename, int sysvar);
+static void add_content_table(int (*call_lesskey)(constant char *, lbool), constant char *envname, lbool sysvar);
+static int add_hometable(int (*call_lesskey)(constant char *, lbool), constant char *envname, constant char *def_filename, lbool sysvar);
 
 #define SK(k) \
 	SK_SPECIAL_KEY, (k), 6, 1, 1, 1
@@ -281,7 +281,7 @@ static void expand_special_keys(unsigned char *table, size_t len)
 			if (repl == NULL || strlen(repl) > klen)
 				repl = "\377";
 			while (*repl != '\0')
-				*to++ = *repl++;
+				*to++ = (unsigned char) *repl++; /*{{type-issue}}*/
 		}
 		*to++ = '\0';
 		/*
@@ -336,7 +336,7 @@ public void init_cmds(void)
 #if USERFILE
 #ifdef BINDIR /* For backwards compatibility */
 	/* Try to add tables in the OLD system lesskey file. */
-	add_hometable(lesskey, NULL, BINDIR "/.sysless", 1);
+	add_hometable(lesskey, NULL, BINDIR "/.sysless", TRUE);
 #endif
 	/*
 	 * Try to load lesskey source file or binary file.
@@ -349,30 +349,30 @@ public void init_cmds(void)
 	 * Try to add tables in system lesskey src file.
 	 */
 #if HAVE_LESSKEYSRC 
-	if (add_hometable(lesskey_src, "LESSKEYIN_SYSTEM", LESSKEYINFILE_SYS, 1) != 0)
+	if (add_hometable(lesskey_src, "LESSKEYIN_SYSTEM", LESSKEYINFILE_SYS, TRUE) != 0)
 #endif
 	{
 		/*
 		 * Try to add the tables in the system lesskey binary file.
 		 */
-		add_hometable(lesskey, "LESSKEY_SYSTEM", LESSKEYFILE_SYS, 1);
+		add_hometable(lesskey, "LESSKEY_SYSTEM", LESSKEYFILE_SYS, TRUE);
 	}
 	/*
 	 * Try to add tables in the lesskey src file "$HOME/.lesskey".
 	 */
 #if HAVE_LESSKEYSRC 
-	if (add_hometable(lesskey_src, "LESSKEYIN", DEF_LESSKEYINFILE, 0) != 0)
+	if (add_hometable(lesskey_src, "LESSKEYIN", DEF_LESSKEYINFILE, FALSE) != 0)
 #endif
 	{
 		/*
 		 * Try to add the tables in the standard lesskey binary file "$HOME/.less".
 		 */
-		add_hometable(lesskey, "LESSKEY", LESSKEYFILE, 0);
+		add_hometable(lesskey, "LESSKEY", LESSKEYFILE, FALSE);
 	}
 #endif
 	
-	add_content_table(lesskey_content, "LESSKEY_CONTENT_SYSTEM", 1);
-	add_content_table(lesskey_content, "LESSKEY_CONTENT", 0);
+	add_content_table(lesskey_content, "LESSKEY_CONTENT_SYSTEM", TRUE);
+	add_content_table(lesskey_content, "LESSKEY_CONTENT", FALSE);
 }
 
 /*
@@ -484,6 +484,7 @@ static int mouse_wheel_up(void)
  */
 static int mouse_button_left(int x, int y)
 {
+	(void) x;
 	/*
 	 * {{ It would be better to return an action and then do this 
 	 *    in commands() but it's nontrivial to pass y to it. }}
@@ -501,6 +502,7 @@ static int mouse_button_left(int x, int y)
  */
 static int mouse_button_right(int x, int y)
 {
+	(void) x;
 	/*
 	 * {{ unlike mouse_button_left, we could return an action,
 	 *    but keep it near mouse_button_left for readability. }}
@@ -516,13 +518,13 @@ static int mouse_button_right(int x, int y)
 /*
  * Read a decimal integer. Return the integer and set *pterm to the terminating char.
  */
-static int getcc_int(LWCHAR *pterm)
+static int getcc_int(char *pterm)
 {
 	int num = 0;
 	int digits = 0;
 	for (;;)
 	{
-		LWCHAR ch = getcc();
+		char ch = getcc();
 		if (ch < '0' || ch > '9')
 		{
 			if (pterm != NULL) *pterm = ch;
@@ -576,7 +578,7 @@ static int x11mouse_action(int skip)
  */
 static int x116mouse_action(int skip)
 {
-	LWCHAR ch;
+	char ch;
 	int x, y;
 	int b = getcc_int(&ch);
 	if (b < 0 || ch != ';') return (A_NOACTION);
@@ -832,7 +834,7 @@ static int old_lesskey(unsigned char *buf, size_t len)
 /* 
  * Process a new (post-v241) lesskey file.
  */
-static int new_lesskey(unsigned char *buf, size_t len, int sysvar)
+static int new_lesskey(unsigned char *buf, size_t len, lbool sysvar)
 {
 	unsigned char *p;
 	unsigned char *end;
@@ -856,21 +858,21 @@ static int new_lesskey(unsigned char *buf, size_t len, int sysvar)
 		{
 		case CMD_SECTION:
 			n = gint(&p);
-			if (n < 0 || p+n >= end)
+			if (p+n >= end)
 				return (-1);
 			add_fcmd_table(p, n);
 			p += n;
 			break;
 		case EDIT_SECTION:
 			n = gint(&p);
-			if (n < 0 || p+n >= end)
+			if (p+n >= end)
 				return (-1);
 			add_ecmd_table(p, n);
 			p += n;
 			break;
 		case VAR_SECTION:
 			n = gint(&p);
-			if (n < 0 || p+n >= end)
+			if (p+n >= end)
 				return (-1);
 			add_var_table((sysvar) ? 
 				&list_sysvar_tables : &list_var_tables, p, n);
@@ -890,7 +892,7 @@ static int new_lesskey(unsigned char *buf, size_t len, int sysvar)
 /*
  * Set up a user command table, based on a "lesskey" file.
  */
-public int lesskey(constant char *filename, int sysvar)
+public int lesskey(constant char *filename, lbool sysvar)
 {
 	unsigned char *buf;
 	POSITION len;
@@ -954,7 +956,7 @@ public int lesskey(constant char *filename, int sysvar)
 }
 
 #if HAVE_LESSKEYSRC 
-static int lesskey_text(constant char *filename, int sysvar, int content)
+static int lesskey_text(constant char *filename, lbool sysvar, lbool content)
 {
 	static struct lesskey_tables tables;
 	if (!secure_allow(SF_LESSKEY))
@@ -969,12 +971,12 @@ static int lesskey_text(constant char *filename, int sysvar, int content)
 	return (0);
 }
 
-public int lesskey_src(constant char *filename, int sysvar)
+public int lesskey_src(constant char *filename, lbool sysvar)
 {
 	return lesskey_text(filename, sysvar, FALSE);
 }
 
-public int lesskey_content(constant char *content, int sysvar)
+public int lesskey_content(constant char *content, lbool sysvar)
 {
 	return lesskey_text(content, sysvar, TRUE);
 }
@@ -990,7 +992,7 @@ void lesskey_parse_error(char *s)
 /*
  * Add a lesskey file.
  */
-static int add_hometable(int (*call_lesskey)(constant char *, int), constant char *envname, constant char *def_filename, int sysvar)
+static int add_hometable(int (*call_lesskey)(constant char *, lbool), constant char *envname, constant char *def_filename, lbool sysvar)
 {
 	char *filename = NULL;
 	constant char *efilename;
@@ -1029,7 +1031,7 @@ static int add_hometable(int (*call_lesskey)(constant char *, int), constant cha
 /*
  * Add the content of a lesskey source file.
  */
-static void add_content_table(int (*call_lesskey)(constant char *, int), constant char *envname, int sysvar)
+static void add_content_table(int (*call_lesskey)(constant char *, lbool), constant char *envname, lbool sysvar)
 {
 	(void) call_lesskey; /* not used */
 	constant char *content = lgetenv(envname);
@@ -1042,7 +1044,7 @@ static void add_content_table(int (*call_lesskey)(constant char *, int), constan
 /*
  * See if a char is a special line-editing command.
  */
-public int editchar(int c, int flags)
+public int editchar(char c, int flags)
 {
 	int action;
 	int nch;

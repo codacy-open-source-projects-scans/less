@@ -143,8 +143,8 @@ public char * shell_quote(constant char *s)
 	size_t len;
 	constant char *esc = get_meta_escape();
 	size_t esclen = strlen(esc);
-	int use_quotes = 0;
-	int have_quotes = 0;
+	lbool use_quotes = FALSE;
+	lbool have_quotes = FALSE;
 
 	/*
 	 * Determine how big a string we need to allocate.
@@ -154,7 +154,7 @@ public char * shell_quote(constant char *s)
 	{
 		len++;
 		if (*p == openquote || *p == closequote)
-			have_quotes = 1;
+			have_quotes = TRUE;
 		if (metachar(*p))
 		{
 			if (esclen == 0)
@@ -163,7 +163,7 @@ public char * shell_quote(constant char *s)
 				 * We've got a metachar, but this shell 
 				 * doesn't support escape chars.  Use quotes.
 				 */
-				use_quotes = 1;
+				use_quotes = TRUE;
 			} else
 			{
 				/*
@@ -514,7 +514,7 @@ static char * readfd(FILE *fd)
 		int ch;
 		if ((ch = getc(fd)) == '\n' || ch == EOF)
 			break;
-		xbuf_add_char(&xbuf, ch);
+		xbuf_add_char(&xbuf, (char) ch);
 	}
 	xbuf_add_char(&xbuf, '\0');
 	return (char *) xbuf.data;
@@ -1058,7 +1058,7 @@ public POSITION filesize(int f)
 	return (seek_filesize(f));
 }
 
-public int curr_ifile_changed(void)
+public lbool curr_ifile_changed(void)
 {
 #if HAVE_STAT_INO
 	/* 

@@ -200,7 +200,7 @@ static int expand_linebuf(void)
 /*
  * Is a character ASCII?
  */
-public int is_ascii_char(LWCHAR ch)
+public lbool is_ascii_char(LWCHAR ch)
 {
 	return (ch <= 0x7F);
 }
@@ -317,7 +317,6 @@ static void add_pfx(char ch, int attr)
 public void plinestart(POSITION pos)
 {
 	LINENUM linenum = 0;
-	size_t i;
 
 	if (linenums == OPT_ONPLUS)
 	{
@@ -359,6 +358,7 @@ public void plinestart(POSITION pos)
 	{
 		char buf[INT_STRLEN_BOUND(linenum) + 2];
 		size_t len;
+		size_t i;
 
 		linenum = vlinenum(linenum);
 		if (linenum == 0)
@@ -368,7 +368,7 @@ public void plinestart(POSITION pos)
 			linenumtoa(linenum, buf, 10);
 			len = strlen(buf);
 		}
-		for (i = 0; i < linenum_width - len; i++)
+		for (i = 0; i < (size_t) linenum_width - len; i++)
 			add_pfx(' ', AT_NORMAL);
 		for (i = 0; i < len; i++)
 			add_pfx(buf[i], AT_BOLD|AT_COLOR_LINENUM);
@@ -381,13 +381,13 @@ public void plinestart(POSITION pos)
  * Return the width of the line prefix (status column and line number).
  * {{ Actual line number can be wider than linenum_width. }}
  */
-public size_t line_pfx_width(void)
+public int line_pfx_width(void)
 {
-	size_t width = 0;
+	int width = 0;
 	if (status_col)
-		width += (size_t) status_col_width; /*{{type-issue}}*/
+		width += status_col_width;
 	if (linenums == OPT_ONPLUS)
-		width += (size_t) linenum_width + 1; /*{{type-issue}}*/
+		width += linenum_width + 1;
 	return width;
 }
 
@@ -403,6 +403,7 @@ public void pshift_all(void)
 			xbuf_add_char(&shifted_ansi, linebuf.buf[i]);
 	linebuf.end = linebuf.print;
 	end_column = (int) linebuf.pfx_end; /*{{type-issue}}*/
+	line_pos = NULL_POSITION;
 }
 
 /*
@@ -471,7 +472,7 @@ public int pwidth(LWCHAR ch, int a, LWCHAR prev_ch, int prev_a)
 
 	if (!utf_mode || is_ascii_char(ch))
 	{
-		if (control_char((char)ch))
+		if (control_char(ch))
 		{
 			/*
 			 * Control characters do unpredictable things,
@@ -632,7 +633,7 @@ public int ansi_step(struct ansi_state *pansi, LWCHAR ch)
 	if (pansi->hindex >= 0)
 	{
 		static char hlink_prefix[] = ESCS "]8;";
-		if (ch == hlink_prefix[pansi->hindex] ||
+		if (ch == (LWCHAR) hlink_prefix[pansi->hindex] ||
 		    (pansi->hindex == 0 && IS_CSI_START(ch)))
 		{
 			pansi->hindex++;
@@ -759,7 +760,7 @@ static int store_char(LWCHAR ch, int a, constant char *rep, POSITION pos)
 		replen = 1;
 	} else
 	{
-		replen = utf_len(rep[0]);
+		replen = (size_t) utf_len(rep[0]); /*{{type-issue}}*/
 	}
 
 	if (cshift == hshift)
@@ -770,7 +771,7 @@ static int store_char(LWCHAR ch, int a, constant char *rep, POSITION pos)
 		{
 			/* Copy shifted ANSI sequences to beginning of line. */
 			for (i = 0;  i < shifted_ansi.end;  i++)
-				add_linebuf(shifted_ansi.data[i], AT_ANSI, 0);
+				add_linebuf((char) shifted_ansi.data[i], AT_ANSI, 0);
 			xbuf_reset(&shifted_ansi);
 		}
 	}
@@ -816,23 +817,19 @@ static int store_char(LWCHAR ch, int a, constant char *rep, POSITION pos)
 
 static int store_string(constant char *s, int a, POSITION pos)
 {
-	if (!fits_on_screen(strlen(s), a))
+	if (!fits_on_screen((int) strlen(s), a))
 		return 1;
 	for ( ;  *s != 0;  s++)
-		STORE_CHAR(*s, a, NULL, pos);
+		STORE_CHAR((LWCHAR)*s, a, NULL, pos);
 	return 0;
 }
 
 /*
- * Append a tab to the line buffer.
- * Store spaces to represent the tab.
+ * Return number of spaces from col to the next tab stop.
  */
-#define STORE_TAB(a,pos) \
-	do { if (store_tab((a),(pos))) return (1); } while (0)
-
-static int store_tab(int attr, POSITION pos)
+static int tab_spaces(int col)
 {
-	int to_tab = end_column - (int) linebuf.pfx_end; /*{{type-issue}}*/
+	int to_tab = col - (int) linebuf.pfx_end; /*{{type-issue}}*/
 
 	if (ntabstops < 2 || to_tab >= tabstops[ntabstops-1])
 		to_tab = tabdefault -
@@ -845,7 +842,19 @@ static int store_tab(int attr, POSITION pos)
 				break;
 		to_tab = tabstops[i+1] - to_tab;
 	}
+	return to_tab;
+}
 
+/*
+ * Append a tab to the line buffer.
+ * Store spaces to represent the tab.
+ */
+#define STORE_TAB(a,pos) \
+	do { if (store_tab((a),(pos))) return (1); } while (0)
+
+static int store_tab(int attr, POSITION pos)
+{
+	int to_tab = tab_spaces(end_column);
 	do {
 		STORE_CHAR(' ', attr, " ", pos);
 	} while (--to_tab > 0);
@@ -869,7 +878,7 @@ static int flush_mbc_buf(POSITION pos)
 	int i;
 
 	for (i = 0; i < mbc_buf_index; i++)
-		if (store_prchar(mbc_buf[i], pos))
+		if (store_prchar((LWCHAR) mbc_buf[i], pos))
 			return mbc_buf_index - i;
 	return 0;
 }
@@ -879,7 +888,7 @@ static int flush_mbc_buf(POSITION pos)
  * Expand tabs into spaces, handle underlining, boldfacing, etc.
  * Returns 0 if ok, 1 if couldn't fit in buffer.
  */
-public int pappend(int c, POSITION pos)
+public int pappend(char c, POSITION pos)
 {
 	int r;
 
@@ -913,14 +922,14 @@ public int pappend(int c, POSITION pos)
 		 * the next char.  If the next char is a newline,
 		 * discard the CR.
 		 */
-		pendc = c;
+		pendc = (LWCHAR) c;
 		pendpos = pos;
 		return (0);
 	}
 
 	if (!utf_mode)
 	{
-		r = do_append(c, NULL, pos);
+		r = do_append((LWCHAR) c, NULL, pos);
 	} else
 	{
 		/* Perform strict validation in all possible cases. */
@@ -930,7 +939,7 @@ public int pappend(int c, POSITION pos)
 			mbc_buf_index = 1;
 			*mbc_buf = c;
 			if (IS_ASCII_OCTET(c))
-				r = do_append(c, NULL, pos);
+				r = do_append((LWCHAR) c, NULL, pos);
 			else if (IS_UTF8_LEAD(c))
 			{
 				mbc_buf_len = utf_len(c);
@@ -978,7 +987,7 @@ static int store_control_char(LWCHAR ch, constant char *rep, POSITION pos)
 	} else 
 	{
 		/* Output a printable representation of the character. */
-		STORE_PRCHAR((char) ch, pos);
+		STORE_PRCHAR(ch, pos);
 	}
 	return (0);
 }
@@ -1125,7 +1134,7 @@ static int do_append(LWCHAR ch, constant char *rep, POSITION pos)
 		STORE_TAB(a, pos);
 		return (0);
 	}
-	if ((!utf_mode || is_ascii_char(ch)) && control_char((char)ch))
+	if ((!utf_mode || is_ascii_char(ch)) && control_char(ch))
 	{
 		return store_control_char(ch, rep, pos);
 	} else if (utf_mode && ctldisp != OPT_ON && is_ubin_char(ch))
@@ -1259,6 +1268,81 @@ public void pdone(int endline, int chopped, int forw)
 }
 
 /*
+ * Return the column number (screen position) of a given file position in its line.
+ * line_pos = position of first char in line
+ * spos = position of char being queried
+ * saved_pos = position of a known column, or NULL_POSITION if no known column
+ * saved_col = column number of a known column, or -1 if no known column
+ *
+ * This attempts to mimic the logic in pappend() and the store_*() functions.
+ * Duplicating this complicated logic is not a good design.
+ */
+public int get_col(POSITION line_pos, POSITION spos, POSITION saved_pos, int saved_col)
+{
+	int col = saved_col;
+	LWCHAR prev_ch = 0;
+	struct ansi_state *pansi = NULL;
+	char utf8_buf[MAX_UTF_CHAR_LEN];
+	int utf8_len = 0;
+
+	if (ch_seek(saved_pos != NULL_POSITION ? saved_pos : line_pos))
+		return -1;
+	while (spos == NULL_POSITION || ch_tell() < spos)
+	{
+		int ich = ch_forw_get();
+		char ch = (char) ich;
+		int cw = 0;
+		if (ich == EOI || ch == '\n')
+			break;
+		if (pansi != NULL)
+		{
+			if (ansi_step(pansi, ch) != ANSI_MID)
+			{
+				ansi_done(pansi);
+				pansi = NULL;
+			}
+		} else if (ctldisp == OPT_ONPLUS && (pansi = ansi_start(ch)) != NULL) {
+			/* start of ansi sequence */ ;
+		} else if (ch == '\b')
+		{
+			if (proc_backspace == OPT_ONPLUS || (bs_mode == BS_CONTROL && proc_backspace == OPT_OFF))
+				cw = strlen(prchar(ch));
+			else
+				cw = (utf_mode && is_wide_char(prev_ch)) ? -2 : -1;
+		} else if (ch == '\t')
+		{
+			if (proc_tab == OPT_ONPLUS || (bs_mode == BS_CONTROL && proc_tab == OPT_OFF))
+				cw = strlen(prchar(ch));
+			else
+				cw = tab_spaces(col);
+		} else if ((!utf_mode || is_ascii_char(ch)) && control_char(ch))
+		{
+			cw = strlen(prchar(ch));
+		} else if (utf8_len < MAX_UTF_CHAR_LEN)
+		{
+			utf8_buf[utf8_len++] = ch;
+			if (is_utf8_well_formed(utf8_buf, utf8_len))
+			{
+				LWCHAR wch = get_wchar(utf8_buf);
+				utf8_len = 0;
+				int attr = 0; /* {{ ignoring attribute is not correct for magic cookie terminals }} */
+				if (utf_mode && ctldisp != OPT_ON && is_ubin_char(wch))
+					cw = strlen(prutfchar(wch));
+				else
+					cw = pwidth(wch, attr, prev_ch, attr);
+				prev_ch = wch;
+			}
+		} else
+		{
+			utf8_len = 0; /* flush invalid UTF-8 */
+		}
+		col += cw;
+		prev_ch = ch;
+	}
+	return col;
+}
+
+/*
  * Set an attribute on each char of the line in the line buffer.
  */
 public void set_attr_line(int a)
@@ -1329,7 +1413,7 @@ public void null_line(void)
  * lines which are not split for screen width.
  * {{ This is supposed to be more efficient than forw_line(). }}
  */
-public POSITION forw_raw_line_len(POSITION curr_pos, ssize_t read_len, constant char **linep, size_t *line_lenp)
+public POSITION forw_raw_line_len(POSITION curr_pos, size_t read_len, constant char **linep, size_t *line_lenp)
 {
 	size_t n;
 	int c;
@@ -1359,8 +1443,8 @@ public POSITION forw_raw_line_len(POSITION curr_pos, ssize_t read_len, constant 
 				break;
 			}
 		}
-		linebuf.buf[n++] = c;
-		if (read_len >= 0 && n >= (size_t) read_len)
+		linebuf.buf[n++] = (char) c;
+		if (read_len != size_t_null && read_len > 0 && n >= read_len)
 		{
 			new_pos = ch_tell();
 			break;
@@ -1377,7 +1461,7 @@ public POSITION forw_raw_line_len(POSITION curr_pos, ssize_t read_len, constant 
 
 public POSITION forw_raw_line(POSITION curr_pos, constant char **linep, size_t *line_lenp)
 {
-	return forw_raw_line_len(curr_pos, -1, linep, line_lenp);
+	return forw_raw_line_len(curr_pos, size_t_null, linep, line_lenp);
 }
 
 /*
@@ -1441,7 +1525,7 @@ public POSITION back_raw_line(POSITION curr_pos, constant char **linep, size_t *
 				*to = *fm;
 			n = size_linebuf - old_size_linebuf;
 		}
-		linebuf.buf[--n] = c;
+		linebuf.buf[--n] = (char) c;
 	}
 	if (linep != NULL)
 		*linep = &linebuf.buf[n];
@@ -1556,7 +1640,7 @@ public int rrshift(void)
 static int lookup_color_index(int attr)
 {
 	int cx;
-	for (cx = 0;  cx < sizeof(color_map)/sizeof(*color_map);  cx++)
+	for (cx = 0;  cx < countof(color_map);  cx++)
 		if (color_map[cx].attr == attr)
 			return cx;
 	return -1;

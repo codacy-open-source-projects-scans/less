@@ -21,7 +21,7 @@
 #include "position.h"
 
 extern int pr_type;
-extern int new_file;
+extern lbool new_file;
 extern int linenums;
 extern int hshift;
 extern int sc_height;
@@ -163,7 +163,7 @@ static POSITION curr_byte(int where)
  * question mark followed by a single letter.
  * Here we decode that letter and return the appropriate boolean value.
  */
-static int cond(char c, int where)
+static lbool cond(char c, int where)
 {
 	POSITION len;
 
@@ -183,7 +183,7 @@ static int cond(char c, int where)
 	case 'l': /* Line number known? */
 	case 'd': /* Same as l */
 		if (!linenums)
-			return 0;
+			return FALSE;
 		return (currline(where) != 0);
 	case 'L': /* Final line number known? */
 	case 'D': /* Final page number known? */
@@ -196,13 +196,12 @@ static int cond(char c, int where)
 #endif
 	case 'n': /* First prompt in a new file? */
 #if TAGS
-		return (ntags() ? 1 : new_file);
+		return (ntags() ? TRUE : new_file ? TRUE : FALSE);
 #else
-		return (new_file);
+		return (new_file ? TRUE : FALSE);
 #endif
 	case 'p': /* Percent into file (bytes) known? */
-		return (curr_byte(where) != NULL_POSITION && 
-				ch_length() > 0);
+		return (curr_byte(where) != NULL_POSITION && ch_length() > 0);
 	case 'P': /* Percent into file (lines) known? */
 		return (currline(where) != 0 &&
 				(len = ch_length()) > 0 &&
@@ -213,11 +212,11 @@ static int cond(char c, int where)
 	case 'x': /* Is there a "next" file? */
 #if TAGS
 		if (ntags())
-			return (0);
+			return (FALSE);
 #endif
 		return (next_ifile(curr_ifile) != NULL_IFILE);
 	}
-	return (0);
+	return (FALSE);
 }
 
 /*
@@ -227,7 +226,7 @@ static int cond(char c, int where)
  * Here we decode that letter and take the appropriate action,
  * usually by appending something to the message being built.
  */
-static void protochar(int c, int where, int iseditproto)
+static void protochar(char c, int where)
 {
 	POSITION pos;
 	POSITION len;
@@ -460,7 +459,7 @@ static constant char * wherechar(char constant *p, int *wp)
 public constant char * pr_expand(constant char *proto)
 {
 	constant char *p;
-	int c;
+	char c;
 	int where;
 
 	mp = message;
@@ -502,13 +501,7 @@ public constant char * pr_expand(constant char *proto)
 			{
 				where = 0;
 				p = wherechar(p, &where);
-				protochar(c, where,
-#if EDITOR
-					(proto == editproto));
-#else
-					0);
-#endif
-
+				protochar(c, where);
 			}
 			break;
 		}
@@ -541,7 +534,7 @@ public constant char * pr_string(void)
 	type = (!less_is_more) ? pr_type : pr_type ? 0 : 1;
 	prompt = pr_expand((ch_getflags() & CH_HELPFILE) ?
 				hproto : prproto[type]);
-	new_file = 0;
+	new_file = FALSE;
 	return (prompt);
 }
 

@@ -233,7 +233,7 @@ static void set_win_colors(t_sgr *sgr)
 static void win_flush(void)
 {
 	if (ctldisp != OPT_ONPLUS || (vt_enabled && sgr_mode))
-		WIN32textout(obuf, ob - obuf);
+		WIN32textout(obuf, ptr_diff(ob, obuf));
 	else
 	{
 		/*
@@ -257,7 +257,7 @@ static void win_flush(void)
 					 * the last escape sequence,
 					 * write them out to the screen.
 					 */
-					WIN32textout(anchor, p-anchor);
+					WIN32textout(anchor, ptr_diff(p, anchor));
 					anchor = p;
 				}
 				p += 2;  /* Skip the "ESC-[" */
@@ -321,7 +321,7 @@ static void win_flush(void)
 		}
 
 		/* Output what's left in the buffer.  */
-		WIN32textout(anchor, ob - anchor);
+		WIN32textout(anchor, ptr_diff(ob, anchor));
 	}
 	ob = obuf;
 }
@@ -386,9 +386,11 @@ public void set_output(int fd)
 
 /*
  * Output a character.
+ * ch is int for compatibility with tputs.
  */
-public int putchr(int c)
+public int putchr(int ch)
 {
+	char c = (char) ch;
 #if 0 /* fake UTF-8 output for testing */
 	extern int utf_mode;
 	if (utf_mode)
@@ -479,16 +481,16 @@ TYPE_TO_A_FUNC(inttoa, int)
 type cfuncname(constant char *buf, constant char **ebuf, int radix) \
 { \
 	type val = 0; \
-	int v = 0; \
+	lbool v = 0; \
 	for (;; buf++) { \
 		char c = *buf; \
 		int digit = (c >= '0' && c <= '9') ? c - '0' : (c >= 'a' && c <= 'f') ? c - 'a' + 10 : (c >= 'A' && c <= 'F') ? c - 'A' + 10 : -1; \
 		if (digit < 0 || digit >= radix) break; \
-		v |= ckd_mul(&val, val, radix); \
-		v |= ckd_add(&val, val, digit); \
+		v = v || ckd_mul(&val, val, radix); \
+		v = v || ckd_add(&val, val, digit); \
 	} \
 	if (ebuf != NULL) *ebuf = buf; \
-	return v ? -1 : val; \
+	return v ? (type)(-1) : val; \
 } \
 type funcname(char *buf, char **ebuf, int radix) \
 { \
@@ -563,7 +565,7 @@ public int less_printf(constant char *fmt, PARG *parg)
 				parg++;
 				break;
 			case 'c':
-				s = prchar(parg->p_char);
+				s = prchar((LWCHAR) parg->p_char);
 				parg++;
 				while (*s != '\0')
 				{
@@ -595,7 +597,7 @@ public void get_return(void)
 #else
 	c = getchr();
 	if (c != '\n' && c != '\r' && c != ' ' && c != READ_INTR)
-		ungetcc(c);
+		ungetcc((char) c);
 #endif
 }
 
@@ -626,7 +628,7 @@ public void error(constant char *fmt, PARG *parg)
 	col += less_printf(fmt, parg);
 	putstr(return_to_continue);
 	at_exit();
-	col += sizeof(return_to_continue) + so_e_width;
+	col += (int) sizeof(return_to_continue) + so_e_width;
 
 	get_return();
 	lower_left();
@@ -674,7 +676,7 @@ public void ixerror(constant char *fmt, PARG *parg)
 		ierror(fmt, parg);
 	else
 		ierror_suffix(fmt, parg,
-			"... (", prchar(intr_char), " or interrupt to abort)");
+			"... (", prchar((LWCHAR) intr_char), " or interrupt to abort)");
 }
 
 /*

@@ -116,7 +116,7 @@ public constant char * xbuf_char_data(constant struct xbuffer *xbuf)
  * Otherwise, possibly set *R to an indeterminate value and return TRUE.
  * R has size RSIZE, and is signed if and only if RSIGNED is nonzero.
  */
-static int help_fixup(void *r, uintmax val, int rsize, int rsigned)
+static lbool help_fixup(void *r, uintmax val, int rsize, int rsigned)
 {
 	if (rsigned)
 	{
@@ -132,14 +132,14 @@ static int help_fixup(void *r, uintmax val, int rsize, int rsigned)
 			long long *pr = r;
 			if (LLONG_MAX < val)
 				return TRUE;
-			*pr = val;
+			*pr = (long long) val;
 #endif
 #ifdef INTMAX_MAX
 		} else if (rsize == sizeof (intmax_t)) {
 			intmax_t *pr = r;
 			if (INTMAX_MAX < val)
 				return TRUE;
-			*pr = val;
+			*pr = (intmax_t) val;
 #endif
 		} else /* rsize == sizeof (long) */
 		{
@@ -161,32 +161,34 @@ static int help_fixup(void *r, uintmax val, int rsize, int rsigned)
 			*pr = (unsigned long) val;
 #ifdef ULLONG_MAX
 		} else if (rsize == sizeof (unsigned long long)) {
-			long long *pr = r;
+			unsigned long long *pr = r;
 			if (ULLONG_MAX < val)
 				return TRUE;
-			*pr = val;
+			*pr = (unsigned long long) val;
 #endif
 		} else /* rsize == sizeof (uintmax) */
 		{
 			uintmax *pr = r;
-			*pr = val;
+			*pr = (uintmax) val;
 		}
 	}
 	return FALSE;
 }
+
 /*
  * If *R can represent the mathematical sum of A and B, store the sum
  * and return FALSE.  Otherwise, possibly set *R to an indeterminate
  * value and return TRUE.  R has size RSIZE, and is signed if and only
  * if RSIGNED is nonzero.
  */
-public int help_ckd_add(void *r, uintmax a, uintmax b, int rsize, int rsigned)
+public lbool help_ckd_add(void *r, uintmax a, uintmax b, int rsize, int rsigned)
 {
 	uintmax sum = a + b;
 	return sum < a || help_fixup(r, sum, rsize, rsigned);
 }
+
 /* Likewise, but for the product of A and B.  */
-public int help_ckd_mul(void *r, uintmax a, uintmax b, int rsize, int rsigned)
+public lbool help_ckd_mul(void *r, uintmax a, uintmax b, int rsize, int rsigned)
 {
 	uintmax product = a * b;
 	return ((b != 0 && a != product / b)

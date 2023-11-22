@@ -29,7 +29,7 @@
 
 extern int bufspace;
 extern int pr_type;
-extern int plusoption;
+extern lbool plusoption;
 extern int swindow;
 extern int sc_width;
 extern int sc_height;
@@ -68,7 +68,7 @@ extern int tabdefault;
 extern char intr_char;
 #if LOGFILE
 extern char *namelogfile;
-extern int force_logfile;
+extern lbool force_logfile;
 extern int logfile;
 #endif
 #if TAGS
@@ -158,7 +158,7 @@ public void opt__O(int type, constant char *s)
 
 static int toggle_fraction(int *num, long *frac, constant char *s, constant char *printopt, void (*calc)(void))
 {
-	int err;
+	lbool err;
 	if (s == NULL)
 	{
 		(*calc)();
@@ -421,7 +421,7 @@ public void opt_p(int type, constant char *s)
 			  */
 			ungetsc("/");
 			ungetsc(s);
-			ungetcc_back(CHAR_END_COMMAND);
+			ungetcc_end_command();
 		}
 		break;
 	}
@@ -475,7 +475,7 @@ public void opt_b(int type, constant char *s)
 		/*
 		 * Set the new number of buffers.
 		 */
-		ch_setbufspace((size_t) bufspace);
+		ch_setbufspace((ssize_t) bufspace);
 		break;
 	case QUERY:
 		break;
@@ -696,13 +696,13 @@ public void set_tabs(constant char *s, size_t len)
 	for (i = 1;  i < TABSTOP_MAX;  )
 	{
 		int n = 0;
-		int v = FALSE;
+		lbool v = FALSE;
 		while (s < es && *s == ' ')
 			s++;
 		for (; s < es && *s >= '0' && *s <= '9'; s++)
 		{
-			v |= ckd_mul(&n, n, 10);
-			v |= ckd_add(&n, n, *s - '0');
+			v = v || ckd_mul(&n, n, 10);
+			v = v || ckd_add(&n, n, *s - '0');
 		}
 		if (!v && n > tabstops[i-1])
 			tabstops[i++] = n;
@@ -816,7 +816,7 @@ public void opt_rscroll(int type, constant char *s)
 		}
 		break; }
 	case QUERY: {
-		p.p_string = rscroll_char ? prchar(rscroll_char) : "-";
+		p.p_string = rscroll_char ? prchar((LWCHAR) rscroll_char) : "-";
 		error("rscroll character is %s", &p);
 		break; }
 	}
@@ -985,7 +985,7 @@ public void opt_intr(int type, constant char *s)
 			intr_char = CONTROL(s[1]);
 		break;
 	case QUERY: {
-		p.p_string = prchar(intr_char);
+		p.p_string = prchar((LWCHAR) intr_char);
 		error("interrupt character is %s", &p);
 		break; }
 	}
@@ -997,7 +997,7 @@ public void opt_intr(int type, constant char *s)
 	/*ARGSUSED*/
 public void opt_header(int type, constant char *s)
 {
-	int err;
+	lbool err;
 	int n;
 
 	switch (type)
@@ -1093,7 +1093,7 @@ public void opt_search_type(int type, constant char *s)
 		if (def_search_type & SRCH_WRAP)       *bp++ = 'W'; 
 		for (i = 1;  i <= NUM_SEARCH_COLORS;  i++)
 			if (def_search_type & SRCH_SUBSEARCH(i))
-				*bp++ = '0'+i;
+				*bp++ = (char) ('0'+i);
 		if (bp == buf)
 			*bp++ = '-';
 		*bp = '\0';

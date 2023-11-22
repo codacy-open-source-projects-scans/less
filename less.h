@@ -77,11 +77,12 @@
  * These substitutes for C23 stdckdint macros do not set *R on overflow,
  * and they assume A and B are nonnegative.  That is good enough for us.
  */
-#define ckd_add(r, a, b) help_ckd_add(r, a, b, sizeof *(r), signed_expr(*(r)))
-#define ckd_mul(r, a, b) help_ckd_mul(r, a, b, sizeof *(r), signed_expr(*(r)))
+#define ckd_add(r, a, b) help_ckd_add(r, (uintmax)(a), (uintmax)(b), sizeof *(r), signed_expr(*(r)))
+#define ckd_mul(r, a, b) help_ckd_mul(r, (uintmax)(a), (uintmax)(b), sizeof *(r), signed_expr(*(r)))
 /* True if the integer expression E, after promotion, is signed.  */
 #define signed_expr(e) ((TRUE ? 0 : e) - 1 < 0)
 #endif
+#define muldiv(val,num,den) umuldiv((uintmax)(val), (uintmax)(num), (uintmax)(den))
 
 #include "lang.h"
 
@@ -138,21 +139,21 @@ void free();
 #undef IS_DIGIT
 
 #if HAVE_WCTYPE
-#define IS_UPPER(c)     iswupper(c)
-#define IS_LOWER(c)     iswlower(c)
-#define TO_UPPER(c)     towupper(c)
-#define TO_LOWER(c)     towlower(c)
+#define IS_UPPER(c)     iswupper((wint_t) (c))
+#define IS_LOWER(c)     iswlower((wint_t) (c))
+#define TO_UPPER(c)     towupper((wint_t) (c))
+#define TO_LOWER(c)     towlower((wint_t) (c))
 #else
 #if HAVE_UPPER_LOWER
-#define IS_UPPER(c)     isupper((unsigned char) (c))
-#define IS_LOWER(c)     islower((unsigned char) (c))
-#define TO_UPPER(c)     toupper((unsigned char) (c))
-#define TO_LOWER(c)     tolower((unsigned char) (c))
+#define IS_UPPER(c)     (is_ascii_char(c) && isupper((unsigned char) (c)))
+#define IS_LOWER(c)     (is_ascii_char(c) && islower((unsigned char) (c)))
+#define TO_UPPER(c)     (is_ascii_char(c) ? toupper((unsigned char) (c)) : (c))
+#define TO_LOWER(c)     (is_ascii_char(c) ? tolower((unsigned char) (c)) : (c))
 #else
-#define IS_UPPER(c)     ASCII_IS_UPPER(c)
-#define IS_LOWER(c)     ASCII_IS_LOWER(c)
-#define TO_UPPER(c)     ASCII_TO_UPPER(c)
-#define TO_LOWER(c)     ASCII_TO_LOWER(c)
+#define IS_UPPER(c)     (is_ascii_char(c) && ASCII_IS_UPPER(c))
+#define IS_LOWER(c)     (is_ascii_char(c) && ASCII_IS_LOWER(c))
+#define TO_UPPER(c)     (is_ascii_char(c) ? ASCII_TO_UPPER(c) : (c))
+#define TO_LOWER(c)     (is_ascii_char(c) ? ASCII_TO_LOWER(c) : (c))
 #endif
 #endif
 
@@ -169,17 +170,6 @@ void free();
 #endif
 
 #define IS_CSI_START(c) (((LWCHAR)(c)) == ESC || (((LWCHAR)(c)) == CSI))
-
-#ifndef NULL
-#define NULL    0
-#endif
-
-#ifndef TRUE
-#define TRUE            1
-#endif
-#ifndef FALSE
-#define FALSE           0
-#endif
 
 #define OPT_OFF         0
 #define OPT_ON          1
@@ -539,7 +529,6 @@ typedef enum {
 #define ESC             CONTROL('[')
 #define ESCS            "\33"
 #define CSI             ((unsigned char)'\233')
-#define CHAR_END_COMMAND 0x40000000
 
 #if _OSK_MWC32
 #define LSIGNAL(sig,func)       os9_signal(sig,func)

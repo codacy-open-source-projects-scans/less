@@ -131,8 +131,12 @@ static void parse_error(constant char *fmt, constant char *arg1)
 {
 	char buf[1024];
 	int n = SNPRINTF2(buf, sizeof(buf), "%s: line %d: ", lesskey_file, linenum);
-	if (n >= 0 && n < sizeof(buf))
-		SNPRINTF1(buf+n, sizeof(buf)-n, fmt, arg1);
+	if (n >= 0)
+	{
+		size_t len = (size_t) n;
+		if (len < sizeof(buf))
+			SNPRINTF1(buf+len, sizeof(buf)-len, fmt, arg1);
+	}
 	++errors;
 	lesskey_parse_error(buf);
 }
@@ -159,7 +163,7 @@ static void init_tables(struct lesskey_tables *tables)
 
 #define CHAR_STRING_LEN 8
 
-static constant char * char_string(char *buf, int ch, int lit)
+static constant char * char_string(char *buf, char ch, int lit)
 {
 	if (lit || (ch >= 0x20 && ch < 0x7f))
 	{
@@ -209,7 +213,7 @@ static constant char * tstr(char **pp, int xlate)
 			ch = 0;
 			i = 0;
 			do
-				ch = 8*ch + (*p - '0');
+				ch = (char) (8*ch + (*p - '0'));
 			while (*++p >= '0' && *p <= '7' && ++i < 3);
 			*pp = p;
 			if (xlate && ch == CONTROL('K'))
@@ -356,7 +360,7 @@ static void erase_cmd_char(struct lesskey_tables *tables)
 static void add_cmd_str(constant char *s, struct lesskey_tables *tables)
 {
 	for ( ;  *s != '\0';  s++)
-		add_cmd_char(*s, tables);
+		add_cmd_char((unsigned char) *s, tables);
 }
 
 /*
@@ -382,7 +386,7 @@ static int match_version(char op, int ver)
  * If the version matches, return the part of the line that should be executed.
  * Otherwise, return NULL.
  */
-static char * version_line(char *s, struct lesskey_tables *tables)
+static char * version_line(char *s)
 {
 	char op;
 	int ver;
@@ -445,7 +449,7 @@ static char * control_line(char *s, struct lesskey_tables *tables)
 	}
 	if (PREFIX(s, "#version"))
 	{
-		return (version_line(s, tables));
+		return (version_line(s));
 	}
 	return (s);
 }
@@ -655,7 +659,7 @@ int parse_lesskey(constant char *ainfile, struct lesskey_tables *tables)
  */
 int parse_lesskey_content(constant char *content, struct lesskey_tables *tables)
 {
-	int cx = 0;
+	size_t cx = 0;
 
 	init_tables(tables);
 	errors = 0;
@@ -667,7 +671,7 @@ int parse_lesskey_content(constant char *content, struct lesskey_tables *tables)
 	{
 		/* Extract a line from the content buffer and parse it. */
 		char line[1024];
-		int lx = 0;
+		size_t lx = 0;
 		while (content[cx] != '\0' && content[cx] != '\n' && content[cx] != ';')
 		{
 			if (lx >= sizeof(line)-1) break;

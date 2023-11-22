@@ -28,14 +28,30 @@
 
 #define public          /* PUBLIC FUNCTION */
 
+#undef  ptr_diff
 #define ptr_diff(p1,p2)  ((size_t) ((p1)-(p2)))
+#undef  countof
+#define countof(a)       ((int)(sizeof(a)/sizeof(*a)))
 
-#if MSDOS_COMPILER==WIN32C
-#if _WIN64
-typedef signed __int64 ssize_t;
-#else
-typedef signed __int32 ssize_t;
+#define size_t_null      ((size_t)-1)
+
+#ifndef NULL
+#define NULL    0
 #endif
-#endif /* MSDOS_COMPILER==WIN32C */
+
+typedef enum lbool { LFALSE, LTRUE } lbool;
+
+#undef  TRUE
+#define TRUE  LTRUE
+#undef  FALSE
+#define FALSE LFALSE
+
+#ifdef _MSC_VER
+#if _WIN64
+typedef __int64 ssize_t;
+#else
+typedef __int32 ssize_t;
+#endif
+#endif
 
 #endif //  LESS_LANG_H_

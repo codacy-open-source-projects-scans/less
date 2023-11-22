@@ -122,13 +122,14 @@ struct filestate {
 	thisfile->hashtbl[h].hnext = (bn);
 
 static struct filestate *thisfile;
-static int ch_ungotchar = -1;
+static unsigned char ch_ungotchar;
+static lbool ch_have_ungotchar = FALSE;
 static int maxbufs = -1;
 
 extern int autobuf;
 extern int sigs;
 extern int follow_mode;
-extern int waiting_for_data;
+extern lbool waiting_for_data;
 extern constant char helpdata[];
 extern constant int size_helpdata;
 extern IFILE curr_ifile;
@@ -144,7 +145,7 @@ static int ch_addbuf();
  */
 static POSITION ch_position(BLOCKNUM block, size_t offset)
 {
-	return (ch_block * LBUFSIZE) + (POSITION) offset;
+	return (block * LBUFSIZE) + (POSITION) offset;
 }
 
 /*
@@ -155,7 +156,7 @@ static int ch_get(void)
 	struct buf *bp;
 	struct bufnode *bn;
 	ssize_t n;
-	int read_again;
+	lbool read_again;
 	int h;
 	POSITION pos;
 	POSITION len;
@@ -260,14 +261,14 @@ static int ch_get(void)
 		 * If we read less than a full block, that's ok.
 		 * We use partial block and pick up the rest next time.
 		 */
-		if (ch_ungotchar != -1)
+		if (ch_have_ungotchar)
 		{
 			bp->data[bp->datasize] = ch_ungotchar;
 			n = 1;
-			ch_ungotchar = -1;
+			ch_have_ungotchar = FALSE;
 		} else if (ch_flags & CH_HELPFILE)
 		{
-			bp->data[bp->datasize] = helpdata[ch_fpos];
+			bp->data[bp->datasize] = (unsigned char) helpdata[ch_fpos];
 			n = 1;
 		} else
 		{
@@ -304,7 +305,7 @@ static int ch_get(void)
 		if (secure_allow(SF_LOGFILE))
 		{
 			if (logfile >= 0 && n > 0)
-				write(logfile, (char *) &bp->data[bp->datasize], (size_t) n);
+				write(logfile, &bp->data[bp->datasize], (size_t) n);
 		}
 #endif
 
@@ -372,9 +373,15 @@ static int ch_get(void)
  */
 public void ch_ungetchar(int c)
 {
-	if (c != -1 && ch_ungotchar != -1)
-		error("ch_ungetchar overrun", NULL_PARG);
-	ch_ungotchar = c;
+	if (c < 0)
+		ch_have_ungotchar = FALSE;
+	else
+	{
+		if (ch_have_ungotchar)
+			error("ch_ungetchar overrun", NULL_PARG);
+		ch_ungotchar = (unsigned char) c;
+		ch_have_ungotchar = TRUE;
+	}
 }
 
 #if LOGFILE
@@ -384,7 +391,7 @@ public void ch_ungetchar(int c)
  */
 public void end_logfile(void)
 {
-	static int tried = FALSE;
+	static lbool tried = FALSE;
 
 	if (logfile < 0)
 		return;
@@ -411,7 +418,7 @@ public void sync_logfile(void)
 {
 	struct buf *bp;
 	struct bufnode *bn;
-	int warned = FALSE;
+	lbool warned = FALSE;
 	BLOCKNUM block;
 	BLOCKNUM nblocks;
 
@@ -420,13 +427,13 @@ public void sync_logfile(void)
 	nblocks = (ch_fpos + LBUFSIZE - 1) / LBUFSIZE;
 	for (block = 0;  block < nblocks;  block++)
 	{
-		int wrote = FALSE;
+		lbool wrote = FALSE;
 		FOR_BUFS(bn)
 		{
 			bp = bufnode_buf(bn);
 			if (bp->block == block)
 			{
-				write(logfile, (char *) bp->data, bp->datasize);
+				write(logfile, bp->data, bp->datasize);
 				wrote = TRUE;
 				break;
 			}
@@ -445,7 +452,7 @@ public void sync_logfile(void)
 /*
  * Determine if a specific block is currently in one of the buffers.
  */
-static int buffered(BLOCKNUM block)
+static lbool buffered(BLOCKNUM block)
 {
 	struct buf *bp;
 	struct bufnode *bn;
@@ -656,7 +663,7 @@ public int ch_back_get(void)
  * Set max amount of buffer space.
  * bufspace is in units of 1024 bytes.  -1 mean no limit.
  */
-public void ch_setbufspace(size_t bufspace)
+public void ch_setbufspace(ssize_t bufspace)
 {
 	if (bufspace < 0)
 		maxbufs = -1;
@@ -869,7 +876,7 @@ public void ch_init(int f, int flags)
  */
 public void ch_close(void)
 {
-	int keepstate = FALSE;
+	lbool keepstate = FALSE;
 
 	if (thisfile == NULL)
 		return;

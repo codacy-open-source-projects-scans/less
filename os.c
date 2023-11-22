@@ -42,13 +42,13 @@
 
 #if HAVE_POLL && !MSDOS_COMPILER
 #define USE_POLL 1
-static int use_poll = TRUE;
+static lbool use_poll = TRUE;
 #else
 #define USE_POLL 0
 #endif
 #if USE_POLL
 #include <poll.h>
-static int any_data = FALSE;
+static lbool any_data = FALSE;
 #endif
 
 /*
@@ -67,7 +67,7 @@ static int any_data = FALSE;
 #endif
 
 public int reading;
-public int waiting_for_data;
+public lbool waiting_for_data;
 public int consecutive_nulls = 0;
 
 /* Milliseconds to wait for data before displaying "waiting for data" message. */
@@ -127,11 +127,11 @@ static int check_poll(int fd, int tty)
 	{
 		if (poller[1].revents & POLLIN) 
 		{
-			LWCHAR ch = getchr();
-			if (ch == intr_char)
+			int ch = getchr();
+			if (ch < 0 || ch == intr_char)
 				/* Break out of "waiting for data". */
 				return (READ_INTR);
-			ungetcc_back(ch);
+			ungetcc_back((char) ch);
 		}
 	}
 	if (ignore_eoi && exit_F_on_close && (poller[0].revents & (POLLHUP|POLLIN)) == POLLHUP)
@@ -189,7 +189,7 @@ start:
 		/*
 		 * We jumped here from intread.
 		 */
-		reading = 0;
+		reading = FALSE;
 #if HAVE_SIGPROCMASK
 		{
 		  sigset_t mask;
@@ -214,7 +214,7 @@ start:
 	}
 
 	flush();
-	reading = 1;
+	reading = TRUE;
 #if MSDOS_COMPILER==DJGPPC
 	if (isatty(fd))
 	{
@@ -231,7 +231,7 @@ start:
 		FD_SET(fd, &readfds);
 		if (select(fd+1, &readfds, 0, 0, 0) == -1)
 		{
-			reading = 0;
+			reading = FALSE;
 			return (READ_ERR);
 		}
 	}
@@ -244,7 +244,7 @@ start:
 		{
 			if (ret == READ_INTR)
 				sigs |= S_INTERRUPT;
-			reading = 0;
+			reading = FALSE;
 			return (ret);
 		}
 	}
@@ -258,7 +258,7 @@ start:
 		if (c == intr_char)
 		{
 			sigs |= S_INTERRUPT;
-			reading = 0;
+			reading = FALSE;
 			return (READ_INTR);
 		}
 		WIN32ungetch(c);
@@ -266,7 +266,7 @@ start:
 #endif
 #endif
 	n = read(fd, buf, len);
-	reading = 0;
+	reading = FALSE;
 #if 1
 	/*
 	 * This is a kludge to workaround a problem on some systems
@@ -396,7 +396,7 @@ public constant char * signal_message(int sig)
  * and min(VAL, NUM) <= DEN so the result cannot overflow.
  * Round to the nearest integer, breaking ties by rounding to even.
  */
-public uintmax muldiv(uintmax val, uintmax num, uintmax den)
+public uintmax umuldiv(uintmax val, uintmax num, uintmax den)
 {
 	/*
 	 * Like round(val * (double) num / den), but without rounding error.
@@ -417,7 +417,7 @@ public uintmax muldiv(uintmax val, uintmax num, uintmax den)
  */
 public int percentage(POSITION num, POSITION den)
 {
-	return (int) muldiv(num,  (POSITION) 100, den);
+	return (int) muldiv(num, 100, den);
 }
 
 /*
@@ -434,7 +434,7 @@ public POSITION percent_pos(POSITION pos, int percent, long fraction)
 	 */
 	POSITION pctden = (percent * NUM_FRAC_DENOM) + fraction;
 
-	return (POSITION) muldiv(pos, pctden, 100 * (POSITION) NUM_FRAC_DENOM);
+	return (POSITION) muldiv(pos, pctden, 100 * NUM_FRAC_DENOM);
 }
 
 #if !HAVE_STRCHR

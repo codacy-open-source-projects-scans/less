@@ -31,14 +31,15 @@ static int prompt_col;           /* Column of cursor just after prompt */
 static char *cp;                 /* Pointer into cmdbuf */
 static int cmd_offset;           /* Index into cmdbuf of first displayed char */
 static int literal;              /* Next input char should not be interpreted */
-public ssize_t updown_match = -1;    /* Prefix length in up/down movement */
+public size_t updown_match;      /* Prefix length in up/down movement */
+public lbool have_updown_match = FALSE;
 
 #if TAB_COMPLETE_FILENAME
 static int cmd_complete(int action);
 /*
  * These variables are statics used by cmd_complete.
  */
-static int in_completion = 0;
+static lbool in_completion = FALSE;
 static char *tk_text;
 static char *tk_original;
 static constant char *tk_ipoint;
@@ -71,7 +72,7 @@ struct mlist
 	struct mlist *prev;
 	struct mlist *curr_mp;
 	char *string;
-	int modified;
+	lbool modified;
 };
 
 /*
@@ -124,7 +125,7 @@ public void cmd_reset(void)
 	cmd_offset = 0;
 	literal = 0;
 	cmd_mbc_buf_len = 0;
-	updown_match = -1;
+	have_updown_match = FALSE;
 }
 
 /*
@@ -134,7 +135,7 @@ public void clear_cmd(void)
 {
 	cmd_col = prompt_col = 0;
 	cmd_mbc_buf_len = 0;
-	updown_match = -1;
+	have_updown_match = FALSE;
 }
 
 /*
@@ -193,7 +194,7 @@ static constant char * cmd_step_common(char *p, LWCHAR ch, size_t len, int *pwid
 
 	if (len == 1)
 	{
-		pr = prchar((int) ch);
+		pr = prchar(ch);
 		width = (int) strlen(pr);
 	} else
 	{
@@ -460,7 +461,7 @@ static int cmd_ichar(constant char *cs, size_t clen)
 	/*
 	 * Reprint the tail of the line from the inserted char.
 	 */
-	updown_match = -1;
+	have_updown_match = FALSE;
 	cmd_repaint(cp);
 	cmd_right();
 	return (CC_OK);
@@ -503,7 +504,7 @@ static int cmd_erase(void)
 	/*
 	 * Repaint the buffer after the erased char.
 	 */
-	updown_match = -1;
+	have_updown_match = FALSE;
 	cmd_repaint(cp);
 	
 	/*
@@ -596,7 +597,7 @@ static int cmd_kill(void)
 	cmd_offset = 0;
 	cmd_home();
 	*cp = '\0';
-	updown_match = -1;
+	have_updown_match = FALSE;
 	cmd_repaint(cp);
 
 	/*
@@ -643,8 +644,11 @@ static int cmd_updown(int action)
 		return (CC_OK);
 	}
 
-	if (updown_match < 0)
+	if (!have_updown_match)
+	{
 		updown_match = ptr_diff(cp, cmdbuf);
+		have_updown_match = TRUE;
+	}
 
 	/*
 	 * Find the next history entry which matches.
@@ -709,7 +713,7 @@ static void ml_unlink(struct mlist *ml)
 /*
  * Add a string to an mlist.
  */
-public void cmd_addhist(struct mlist *mlist, constant char *cmd, int modified)
+public void cmd_addhist(struct mlist *mlist, constant char *cmd, lbool modified)
 {
 #if CMD_HISTORY
 	struct mlist *ml;
@@ -771,8 +775,8 @@ public void cmd_accept(void)
 	 */
 	if (curr_mlist == NULL || curr_mlist == ml_examine)
 		return;
-	cmd_addhist(curr_mlist, cmdbuf, 1);
-	curr_mlist->modified = 1;
+	cmd_addhist(curr_mlist, cmdbuf, TRUE);
+	curr_mlist->modified = TRUE;
 #endif
 }
 
@@ -784,7 +788,7 @@ public void cmd_accept(void)
  *      CC_OK   Line edit function done.
  *      CC_QUIT The char requests the current command to be aborted.
  */
-static int cmd_edit(int c)
+static int cmd_edit(char c)
 {
 	int action;
 	int flags;
@@ -927,8 +931,8 @@ static char * delimit_word(void)
 	char *word;
 #if SPACES_IN_FILENAMES
 	char *p;
-	int delim_quoted = 0;
-	int meta_quoted = 0;
+	int delim_quoted = FALSE;
+	int meta_quoted = FALSE;
 	constant char *esc = get_meta_escape();
 	size_t esclen = strlen(esc);
 #endif
@@ -981,20 +985,20 @@ static char * delimit_word(void)
 	{
 		if (meta_quoted)
 		{
-			meta_quoted = 0;
+			meta_quoted = FALSE;
 		} else if (esclen > 0 && p + esclen < cp &&
 		           strncmp(p, esc, esclen) == 0)
 		{
-			meta_quoted = 1;
+			meta_quoted = TRUE;
 			p += esclen - 1;
 		} else if (delim_quoted)
 		{
 			if (*p == closequote)
-				delim_quoted = 0;
+				delim_quoted = FALSE;
 		} else /* (!delim_quoted) */
 		{
 			if (*p == openquote)
-				delim_quoted = 1;
+				delim_quoted = TRUE;
 			else if (*p == ' ')
 				word = p+1;
 		}
@@ -1117,7 +1121,7 @@ static int cmd_complete(int action)
 			/*
 			 * Use the first filename in the list.
 			 */
-			in_completion = 1;
+			in_completion = TRUE;
 			init_textlist(&tk_tlist, tk_text);
 			tk_trial = next_compl(action, (char*)NULL);
 		}
@@ -1142,7 +1146,7 @@ static int cmd_complete(int action)
 		 * There are no more trial completions.
 		 * Insert the original (uncompleted) filename.
 		 */
-		in_completion = 0;
+		in_completion = FALSE;
 		if (cmd_istr(tk_original) != CC_OK)
 			goto fail;
 	} else
@@ -1170,7 +1174,7 @@ static int cmd_complete(int action)
 	return (CC_OK);
 	
 fail:
-	in_completion = 0;
+	in_completion = FALSE;
 	bell();
 	return (CC_OK);
 }
@@ -1185,7 +1189,7 @@ fail:
  *      CC_QUIT         The char requests the command to be aborted.
  *      CC_ERROR        The char could not be accepted due to an error.
  */
-public int cmd_char(int c)
+public int cmd_char(char c)
 {
 	int action;
 	size_t len;
@@ -1205,7 +1209,7 @@ public int cmd_char(int c)
 			if (IS_ASCII_OCTET(c))
 				cmd_mbc_buf_len = 1;
 #if MSDOS_COMPILER || OS2
-			else if (c == (unsigned char) '\340' && IS_ASCII_OCTET(peekcc()))
+			else if (c == '\340' && IS_ASCII_OCTET(peekcc()))
 			{
 				/* Assume a special key. */
 				cmd_mbc_buf_len = 1;
@@ -1242,7 +1246,7 @@ public int cmd_char(int c)
 			goto retry;
 		}
 
-		len = cmd_mbc_buf_len;
+		len = (size_t) cmd_mbc_buf_len; /*{{type-issue}}*/
 		cmd_mbc_buf_len = 0;
 	}
 
@@ -1284,7 +1288,7 @@ public LINENUM cmd_int(long *frac)
 {
 	constant char *p;
 	LINENUM n = 0;
-	int err;
+	lbool err;
 
 	for (p = cmdbuf;  *p >= '0' && *p <= '9';  p++)
 	{
@@ -1340,7 +1344,7 @@ static int mlist_size(struct mlist *ml)
 /*
  * Get the name of the history file.
  */
-static char * histfile_find(int must_exist)
+static char * histfile_find(lbool must_exist)
 {
 	constant char *home = lgetenv("HOME");
 	char *name = NULL;
@@ -1367,7 +1371,7 @@ static char * histfile_find(int must_exist)
 	return (name);
 }
 
-static char * histfile_name(int must_exist)
+static char * histfile_name(lbool must_exist)
 {
 	constant char *name;
 	char *wname;
@@ -1390,7 +1394,7 @@ static char * histfile_name(int must_exist)
 	if (!must_exist)
 	{
 	 	/* If we're writing the file and the file already exists, use it. */
-		wname = histfile_find(1);
+		wname = histfile_find(TRUE);
 	}
 	if (wname == NULL)
 		wname = histfile_find(must_exist);
@@ -1408,7 +1412,7 @@ static void read_cmdhist2(void (*action)(void*,struct mlist*,constant char*), vo
 	FILE *f;
 	int *skip = NULL;
 
-	filename = histfile_name(1);
+	filename = histfile_name(TRUE);
 	if (filename == NULL)
 		return;
 	f = fopen(filename, "r");
@@ -1465,7 +1469,7 @@ static void read_cmdhist2(void (*action)(void*,struct mlist*,constant char*), vo
 	fclose(f);
 }
 
-static void read_cmdhist(void (*action)(void*,struct mlist*,constant char*), void *uparam, int skip_search, int skip_shell)
+static void read_cmdhist(void (*action)(void*,struct mlist*,constant char*), void *uparam, lbool skip_search, lbool skip_shell)
 {
 	if (!secure_allow(SF_HISTORY))
 		return;
@@ -1475,6 +1479,7 @@ static void read_cmdhist(void (*action)(void*,struct mlist*,constant char*), voi
 
 static void addhist_init(void *uparam, struct mlist *ml, constant char *string)
 {
+	(void) uparam;
 	if (ml != NULL)
 		cmd_addhist(ml, string, 0);
 	else if (string != NULL)
@@ -1516,9 +1521,9 @@ static void write_mlist(struct mlist *ml, FILE *f)
 		if (!ml->modified)
 			continue;
 		fprintf(f, "\"%s\n", ml->string);
-		ml->modified = 0;
+		ml->modified = FALSE;
 	}
-	ml->modified = 0; /* entire mlist is now unmodified */
+	ml->modified = FALSE; /* entire mlist is now unmodified */
 }
 
 /*
@@ -1589,13 +1594,13 @@ static void copy_hist(void *uparam, struct mlist *ml, constant char *string)
 static void make_file_private(FILE *f)
 {
 #if HAVE_FCHMOD
-	int do_chmod = 1;
+	lbool do_chmod = TRUE;
 #if HAVE_STAT
 	struct stat statbuf;
 	int r = fstat(fileno(f), &statbuf);
 	if (r < 0 || !S_ISREG(statbuf.st_mode))
 		/* Don't chmod if not a regular file. */
-		do_chmod = 0;
+		do_chmod = FALSE;
 #endif
 	if (do_chmod)
 		fchmod(fileno(f), 0600);
@@ -1606,17 +1611,17 @@ static void make_file_private(FILE *f)
  * Does the history file need to be updated?
  */
 #if CMD_HISTORY
-static int histfile_modified(void)
+static lbool histfile_modified(void)
 {
 	if (mlist_search.modified)
-		return 1;
+		return TRUE;
 #if SHELL_ESCAPE || PIPEC
 	if (mlist_shell.modified)
-		return 1;
+		return TRUE;
 #endif
 	if (marks_modified)
-		return 1;
-	return 0;
+		return TRUE;
+	return FALSE;
 }
 #endif
 

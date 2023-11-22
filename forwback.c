@@ -16,7 +16,7 @@
 #include "less.h"
 #include "position.h"
 
-public int squished;
+public lbool squished;
 public int no_back_scroll = 0;
 public int forw_prompt;
 public int first_time = 1;
@@ -27,7 +27,7 @@ extern int quiet;
 extern int sc_width, sc_height;
 extern int hshift;
 extern int auto_wrap;
-extern int plusoption;
+extern lbool plusoption;
 extern int forw_scroll;
 extern int back_scroll;
 extern int ignore_eoi;
@@ -64,19 +64,19 @@ public void eof_bell(void)
 /*
  * Check to see if the end of file is currently displayed.
  */
-public int eof_displayed(void)
+public lbool eof_displayed(void)
 {
 	POSITION pos;
 
 	if (ignore_eoi)
-		return (0);
+		return (FALSE);
 
 	if (ch_length() == NULL_POSITION)
 		/*
 		 * If the file length is not known,
 		 * we can't possibly be displaying EOF.
 		 */
-		return (0);
+		return (FALSE);
 
 	/*
 	 * If the bottom line is empty, we are at EOF.
@@ -90,13 +90,13 @@ public int eof_displayed(void)
 /*
  * Check to see if the entire file is currently displayed.
  */
-public int entire_file_displayed(void)
+public lbool entire_file_displayed(void)
 {
 	POSITION pos;
 
 	/* Make sure last line of file is displayed. */
 	if (!eof_displayed())
-		return (0);
+		return (FALSE);
 
 	/* Make sure first line of file is displayed. */
 	pos = position(0);
@@ -113,7 +113,7 @@ public void squish_check(void)
 {
 	if (!squished)
 		return;
-	squished = 0;
+	squished = FALSE;
 	repaint();
 }
 
@@ -157,7 +157,7 @@ public int overlay_header(void)
 {
 	POSITION pos = ch_zero(); /* header lines are at beginning of file */
 	int ln;
-	int moved = FALSE;
+	lbool moved = FALSE;
 
 	if (header_lines > 0)
 	{
@@ -228,7 +228,7 @@ public void forw(int n, POSITION pos, int force, int only_last, int nblank)
 
 #if HILITE_SEARCH
 	if (pos != NULL_POSITION && (hilite_search == OPT_ONPLUS || is_filtering() || status_col)) {
-		prep_hilite(pos, pos + 4*size_linebuf, ignore_eoi ? 1 : -1);
+		prep_hilite(pos, pos + (POSITION) (4*size_linebuf), ignore_eoi ? 1 : -1);
 		pos = next_unfiltered(pos);
 	}
 #endif
@@ -336,7 +336,7 @@ public void forw(int n, POSITION pos, int force, int only_last, int nblank)
 #endif
 		    !plusoption)
 		{
-			squished = 1;
+			squished = TRUE;
 			continue;
 		}
 		put_line();
@@ -401,7 +401,7 @@ public void back(int n, POSITION pos, int force, int only_last)
 	do_repaint = (n > get_back_scroll() || (only_last && n > sc_height-1) || header_lines > 0);
 #if HILITE_SEARCH
 	if (pos != NULL_POSITION && (hilite_search == OPT_ONPLUS || is_filtering() || status_col)) {
-		prep_hilite((pos < 3*size_linebuf) ? 0 : pos - 3*size_linebuf, pos, -1);
+		prep_hilite((pos < (POSITION) (3*size_linebuf)) ? 0 : pos - (POSITION) (3*size_linebuf), pos, -1);
 	}
 #endif
 	while (--n >= 0)

@@ -40,10 +40,11 @@ extern int match_shift;
 extern int nosearch_headers;
 extern int header_lines;
 extern int header_cols;
+extern char rscroll_char;
 #if HILITE_SEARCH
 extern int hilite_search;
 extern size_t size_linebuf;
-extern int squished;
+extern lbool squished;
 extern int can_goto_line;
 static int hide_hilite;
 static POSITION prep_startpos;
@@ -113,7 +114,7 @@ struct pattern_info {
 	PATTERN_TYPE compiled;
 	char* text;
 	int search_type;
-	int is_ucase_pattern;
+	lbool is_ucase_pattern;
 	struct pattern_info *next;
 };
 
@@ -129,7 +130,7 @@ public int is_caseless;
 /*
  * Are there any uppercase letters in this string?
  */
-static int is_ucase(constant char *str)
+static lbool is_ucase(constant char *str)
 {
 	constant char *str_end = str + strlen(str);
 	LWCHAR ch;
@@ -138,9 +139,9 @@ static int is_ucase(constant char *str)
 	{
 		ch = step_charc(&str, +1, str_end);
 		if (IS_UPPER(ch))
-			return (1);
+			return (TRUE);
 	}
-	return (0);
+	return (FALSE);
 }
 
 /*
@@ -513,7 +514,7 @@ static int pos_in_header(POSITION pos)
 /* 
  * Is a line "filtered" -- that is, should it be hidden?
  */
-public int is_filtered(POSITION pos)
+public lbool is_filtered(POSITION pos)
 {
 	struct hilite_node *n;
 
@@ -573,18 +574,28 @@ public POSITION prev_unfiltered(POSITION pos)
 	return (pos);
 }
 
-static void shift_visible(size_t start_off, size_t end_off, size_t line_len)
+static void shift_visible(POSITION line_pos, size_t start_off, size_t end_off)
 {
-	size_t swidth = (size_t) sc_width - line_pfx_width();
+	POSITION start_pos = line_pos + start_off;
+	POSITION end_pos = line_pos + end_off;
+	int start_col = get_col(line_pos, start_pos, NULL_POSITION, -1);
+	int end_col = get_col(line_pos, end_pos, start_pos, start_col);
+	int swidth = sc_width - line_pfx_width() - (rscroll_char ? 1 : 0);
 	int new_hshift;
-	if (end_off < swidth) /* whole string is in first screen */
+	if (start_col < 0 || end_col < 0)
+		return;
+	if (end_col < swidth) /* whole string is in first screen */
 		new_hshift = 0;
-	else if (start_off >= line_len - swidth) /* whole string is in last screen */
-		new_hshift = (int) (line_len - swidth);
-	else if (start_off > (size_t) hshift && end_off < (size_t) hshift + swidth) /*{{type-issue}}*/
+	else if (start_col > hshift && end_col < hshift + swidth)
 		new_hshift = hshift; /* already visible; leave hshift unchanged */
-	else /* shift it to column match_shift */
-		new_hshift = (start_off < (size_t) match_shift) ? 0 : (int) (start_off - (size_t) match_shift); /*{{type-issue}}*/
+	else 
+	{
+		int eol_col = get_col(line_pos, NULL_POSITION, end_pos, end_col) - swidth;
+		if (start_col >= eol_col) /* whole string is in last screen */
+			new_hshift = eol_col;
+		else /* shift it to column match_shift */
+			new_hshift = (start_col < match_shift) ? 0 : start_col - match_shift;
+	}
 	if (new_hshift != hshift)
 	{
 		hshift = new_hshift;
@@ -962,7 +973,7 @@ static void create_hilites(POSITION linepos, constant char *line, constant char 
  * the current pattern.
  * sp,ep delimit the first match already found.
  */
-static void hilite_line(POSITION linepos, constant char *line, size_t line_len, int *chpos, constant char **sp, constant char **ep, int nsp, int cvt_ops)
+static void hilite_line(POSITION linepos, constant char *line, size_t line_len, int *chpos, constant char **sp, constant char **ep, int nsp)
 {
 	constant char *searchp;
 	constant char *line_end = line + line_len;
@@ -1209,8 +1220,8 @@ static int search_range(POSITION pos, POSITION endpos, int search_type, int matc
 	int *chpos;
 	POSITION linepos, oldpos;
 	int skip_bytes = 0;
-	size_t swidth = (size_t) sc_width - line_pfx_width(); /*{{type-issue}}*/
-	size_t sheight = (size_t) sc_height - sindex_from_sline(jump_sline);
+	size_t swidth = (size_t) (sc_width - line_pfx_width()); /*{{type-issue}}*/
+	size_t sheight = (size_t) (sc_height - sindex_from_sline(jump_sline));
 
 	linenum = find_linenum(pos);
 	if (nosearch_headers && linenum <= header_lines)
@@ -1378,7 +1389,7 @@ static int search_range(POSITION pos, POSITION endpos, int search_type, int matc
 					 * Just add the matches in this line to the 
 					 * hilite list and keep searching.
 					 */
-					hilite_line(linepos + skip_bytes, cline, line_len, chpos, sp, ep, NSP, cvt_ops);
+					hilite_line(linepos + skip_bytes, cline, line_len, chpos, sp, ep, NSP);
 #endif
 				} else if (--matches <= 0)
 				{
@@ -1394,7 +1405,7 @@ static int search_range(POSITION pos, POSITION endpos, int search_type, int matc
 						 * the matches in this one line.
 						 */
 						clr_hilite();
-						hilite_line(linepos + skip_bytes, cline, line_len, chpos, sp, ep, NSP, cvt_ops);
+						hilite_line(linepos + skip_bytes, cline, line_len, chpos, sp, ep, NSP);
 					}
 #endif
 					if (chop_line())
@@ -1407,7 +1418,7 @@ static int search_range(POSITION pos, POSITION endpos, int search_type, int matc
 						{
 							size_t start_off = ptr_diff(sp[0], cline);
 							size_t end_off = ptr_diff(ep[0], cline);
-							shift_visible(start_off, end_off, line_len);
+							shift_visible(linepos, start_off, end_off);
 						}
 					} else if (plastlinepos != NULL)
 					{
@@ -1423,7 +1434,7 @@ static int search_range(POSITION pos, POSITION endpos, int search_type, int matc
 						{
 							size_t end_off = ptr_diff(ep[0], cline);
 							if (end_off >= swidth * sheight / 4) /* heuristic */
-								*plastlinepos = get_lastlinepos(linepos, linepos + chpos[end_off], sheight);
+								*plastlinepos = get_lastlinepos(linepos, linepos + chpos[end_off], (int) sheight);
 						}
 					}
 					free(cline);
