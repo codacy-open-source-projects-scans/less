@@ -37,7 +37,8 @@ extern int sc_width;
 extern int sc_height;
 extern int hshift;
 extern int match_shift;
-extern int nosearch_headers;
+extern int nosearch_header_lines;
+extern int nosearch_header_cols;
 extern int header_lines;
 extern int header_cols;
 extern char rscroll_char;
@@ -49,7 +50,8 @@ extern int can_goto_line;
 static int hide_hilite;
 static POSITION prep_startpos;
 static POSITION prep_endpos;
-static POSITION header_end_pos = NULL_POSITION;
+public POSITION header_start_pos = NULL_POSITION;
+static POSITION header_end_pos;
 
 /*
  * Structures for maintaining a set of ranges for hilites and filtered-out
@@ -85,8 +87,8 @@ struct hilite_node
 };
 struct hilite_storage
 {
-	int capacity;
-	int used;
+	size_t capacity;
+	size_t used;
 	struct hilite_storage *next;
 	struct hilite_node *nodes;
 };
@@ -496,11 +498,21 @@ static int hilited_range_attr(POSITION pos, POSITION epos)
 }
 
 /*
- * Determine and save the position of the first char after any header lines.
+ * Set header parameters.
  */
-public void set_header_end_pos(void)
+public void set_header(POSITION pos)
 {
-	header_end_pos = (header_lines == 0) ? NULL_POSITION : find_pos(header_lines+1);
+	header_start_pos = (header_lines == 0) ? NULL_POSITION : pos;
+	if (header_start_pos != NULL_POSITION)
+	{
+		int ln;
+		for (ln = 0; ln < header_lines; ++ln)
+		{
+			pos = forw_raw_line(pos, NULL, NULL);
+			if (pos == NULL_POSITION) break;
+		}
+		header_end_pos = pos;
+	}
 }
 
 /*
@@ -508,7 +520,8 @@ public void set_header_end_pos(void)
  */
 static int pos_in_header(POSITION pos)
 {
-	return (header_end_pos != NULL_POSITION && pos < header_end_pos);
+	return (header_start_pos != NULL_POSITION &&
+	        pos >= header_start_pos && pos < header_end_pos);
 }
 
 /* 
@@ -574,6 +587,10 @@ public POSITION prev_unfiltered(POSITION pos)
 	return (pos);
 }
 
+/*
+ * Set the hshift for the line starting at line_pos so that the string 
+ * between start_off and end_off is visible on the screen.
+ */
 static void shift_visible(POSITION line_pos, size_t start_off, size_t end_off)
 {
 	POSITION start_pos = line_pos + start_off;
@@ -661,7 +678,7 @@ public int is_hilited_attr(POSITION pos, POSITION epos, int nohide, int *p_match
  */
 static struct hilite_storage * hlist_getstorage(struct hilite_tree *anchor)
 {
-	int capacity = 1;
+	size_t capacity = 1;
 	struct hilite_storage *s;
 
 	if (anchor->current)
@@ -672,7 +689,7 @@ static struct hilite_storage * hlist_getstorage(struct hilite_tree *anchor)
 	}
 
 	s = (struct hilite_storage *) ecalloc(1, sizeof(struct hilite_storage));
-	s->nodes = (struct hilite_node *) ecalloc((size_t) capacity, sizeof(struct hilite_node));
+	s->nodes = (struct hilite_node *) ecalloc(capacity, sizeof(struct hilite_node));
 	s->capacity = capacity;
 	s->used = 0;
 	s->next = NULL;
@@ -1224,7 +1241,7 @@ static int search_range(POSITION pos, POSITION endpos, int search_type, int matc
 	size_t sheight = (size_t) (sc_height - sindex_from_sline(jump_sline));
 
 	linenum = find_linenum(pos);
-	if (nosearch_headers && linenum <= header_lines)
+	if (nosearch_header_lines && linenum <= header_lines)
 	{
 		linenum = header_lines + 1;
 		pos = find_pos(linenum);
@@ -1341,7 +1358,7 @@ static int search_range(POSITION pos, POSITION endpos, int search_type, int matc
 		if (is_filtered(linepos))
 			continue;
 #endif
-		if (nosearch_headers)
+		if (nosearch_header_cols)
 			skip_bytes = skip_columns(header_cols, &line, &line_len);
 
 		/*

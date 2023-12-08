@@ -53,6 +53,7 @@
         ^R       Don't use REGULAR EXPRESSIONS.
         ^S _n     Search for match in _n-th parenthesized subpattern.
         ^W       WRAP search if no match found.
+        ^L       Enter next character literally into pattern.
  ---------------------------------------------------------------------------
 
                            JJUUMMPPIINNGG
@@ -215,8 +216,8 @@
                   Automatically determine the size of the input file.
                 --follow-name
                   The F command changes files if the input file is renamed.
-                --header=[_N[,_M]]
-                  Use N lines and M columns to display file headers.
+                --header=[_L[,_C[,_N]]
+                  Use _L lines (starting at line _N) and _C columns as headers.
                 --incsearch
                   Search file as each pattern character is typed in.
                 --intr=_C
@@ -235,8 +236,12 @@
                   Remove duplicates from command history.
                 --no-number-headers
                   Don't give line numbers to header lines.
+                --no-search-header-lines
+                  Searches do not include header lines.
+                --no-search-header-columns
+                  Searches do not include header columns.
                 --no-search-headers
-                  Don't search in header lines or columns.
+                  Searches do not include header lines or columns.
                 --no-vbell
                   Disable the terminal's visual bell.
                 --redraw-on-quit

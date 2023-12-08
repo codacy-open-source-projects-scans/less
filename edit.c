@@ -664,7 +664,7 @@ public int edit_ifile(IFILE ifile)
 		}
 		if (want_filesize)
 			scan_eof();
-		set_header_end_pos();
+		set_header(ch_zero());
 	}
 	return (0);
 }

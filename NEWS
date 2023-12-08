@@ -11,7 +11,7 @@
 
 ======================================================================
 
-	Major changes between "less" versions 643 and 649
+	Major changes between "less" versions 643 and 650
 
 * Add --match-shift option.
 
@@ -19,11 +19,17 @@
 
 * Add LESSKEY_CONTENT environment variable.
 
+* Add --no-search-header-lines and --no-search-header-columns options.
+
+* Add ctrl-L search modifier.
+
 * Allow expansion of environment variables in lesskey files.
 
 * Add LESSSECURE_ALLOW environment variable (github #449).
 
 * Add LESS_UNSUPPORT environment variable.
+
+* Add line number parameter to --header option (github #436).
 
 * Mouse right-click jumps to position marked by left-click (github #390).
 

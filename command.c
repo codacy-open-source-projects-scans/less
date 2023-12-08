@@ -79,6 +79,7 @@ static int save_hshift;
 static int save_bs_mode;
 static int save_proc_backspace;
 static int screen_trashed_value = 0;
+static lbool literal_char = FALSE;
 #if PIPEC
 static char pipec;
 #endif
@@ -178,6 +179,8 @@ static void mca_search1(void)
 			cmd_putstr(buf);
 		}
 	}
+	if (literal_char)
+		cmd_putstr("Lit ");
 
 #if HILITE_SEARCH
 	if (search_type & SRCH_FILTER)
@@ -508,7 +511,7 @@ static int mca_opt_char(char c)
 	/*
 	 * Display a prompt appropriate for the option parameter.
 	 */
-	start_mca(A_OPT_TOGGLE, opt_prompt(curropt), (void*)NULL, 0);
+	start_mca(A_OPT_TOGGLE, opt_prompt(curropt), NULL, 0);
 	return (MCA_MORE);
 }
 
@@ -537,8 +540,11 @@ static int mca_search_char(char c)
 	 *      *  Toggle the PAST_EOF flag
 	 *      @  Toggle the FIRST_FILE flag
 	 */
-	if (len_cmdbuf() > 0)
+	if (len_cmdbuf() > 0 || literal_char)
+	{
+		literal_char = FALSE;
 		return (NO_MCA);
+	}
 
 	switch (c)
 	{
@@ -579,6 +585,10 @@ static int mca_search_char(char c)
 	case CONTROL('N'): /* NOT match */
 	case '!':
 		flag = SRCH_NO_MATCH;
+		break;
+	case CONTROL('L'):
+		literal_char = TRUE;
+		flag = -1;
 		break;
 	}
 
@@ -1392,7 +1402,7 @@ public void commands(void)
 			/*
 			 * First digit of a number.
 			 */
-			start_mca(A_DIGIT, ":", (void*)NULL, CF_QUIT_ON_ERASE);
+			start_mca(A_DIGIT, ":", NULL, CF_QUIT_ON_ERASE);
 			goto again;
 
 		case A_F_WINDOW:
@@ -1681,6 +1691,7 @@ public void commands(void)
 			search_type = SRCH_FORW | def_search_type;
 			if (number <= 0)
 				number = 1;
+			literal_char = FALSE;
 			mca_search();
 			c = getcc();
 			goto again;
@@ -1693,6 +1704,7 @@ public void commands(void)
 			search_type = SRCH_BACK | def_search_type;
 			if (number <= 0)
 				number = 1;
+			literal_char = FALSE;
 			mca_search();
 			c = getcc();
 			goto again;
@@ -1700,6 +1712,7 @@ public void commands(void)
 		case A_FILTER:
 #if HILITE_SEARCH
 			search_type = SRCH_FORW | SRCH_FILTER;
+			literal_char = FALSE;
 			mca_search();
 			c = getcc();
 			goto again;
@@ -1973,7 +1986,7 @@ public void commands(void)
 			/*
 			 * Set an initial command for new files.
 			 */
-			start_mca(A_FIRSTCMD, "+", (void*)NULL, 0);
+			start_mca(A_FIRSTCMD, "+", NULL, 0);
 			c = getcc();
 			goto again;
 
@@ -2000,7 +2013,7 @@ public void commands(void)
 			 */
 			if (ch_getflags() & CH_HELPFILE)
 				break;
-			start_mca(A_SETMARK, "set mark: ", (void*)NULL, 0);
+			start_mca(A_SETMARK, "set mark: ", NULL, 0);
 			c = getcc();
 			if (is_erase_char(c) || is_newline_char(c))
 				break;
@@ -2012,7 +2025,7 @@ public void commands(void)
 			/*
 			 * Clear a mark.
 			 */
-			start_mca(A_CLRMARK, "clear mark: ", (void*)NULL, 0);
+			start_mca(A_CLRMARK, "clear mark: ", NULL, 0);
 			c = getcc();
 			if (is_erase_char(c) || is_newline_char(c))
 				break;
@@ -2024,7 +2037,7 @@ public void commands(void)
 			/*
 			 * Jump to a marked position.
 			 */
-			start_mca(A_GOMARK, "goto mark: ", (void*)NULL, 0);
+			start_mca(A_GOMARK, "goto mark: ", NULL, 0);
 			c = getcc();
 			if (is_erase_char(c) || is_newline_char(c))
 				break;
@@ -2039,7 +2052,7 @@ public void commands(void)
 #if PIPEC
 			if (secure_allow(SF_PIPE))
 			{
-				start_mca(A_PIPE, "|mark: ", (void*)NULL, 0);
+				start_mca(A_PIPE, "|mark: ", NULL, 0);
 				c = getcc();
 				if (is_erase_char(c))
 					break;
@@ -2058,7 +2071,7 @@ public void commands(void)
 
 		case A_B_BRACKET:
 		case A_F_BRACKET:
-			start_mca(action, "Brackets: ", (void*)NULL, 0);
+			start_mca(action, "Brackets: ", NULL, 0);
 			c = getcc();
 			goto again;
 
@@ -2117,8 +2130,7 @@ public void commands(void)
 			if (mca != A_PREFIX)
 			{
 				cmd_reset();
-				start_mca(A_PREFIX, " ", (void*)NULL,
-					CF_QUIT_ON_ERASE);
+				start_mca(A_PREFIX, " ", NULL, CF_QUIT_ON_ERASE);
 				(void) cmd_char(c);
 			}
 			c = getcc();
