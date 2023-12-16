@@ -47,6 +47,7 @@ extern void *ml_examine;
 extern int wheel_lines;
 extern int def_search_type;
 extern int updown_match;
+extern lbool search_wrapped;
 #if SHELL_ESCAPE || PIPEC
 extern void *ml_shell;
 #endif
@@ -290,39 +291,47 @@ static void exec_mca(void)
 		break;
 #endif
 #if SHELL_ESCAPE
-	case A_SHELL:
+	case A_SHELL: {
 		/*
 		 * !! just uses whatever is in shellcmd.
 		 * Otherwise, copy cmdbuf to shellcmd,
 		 * expanding any special characters ("%" or "#").
 		 */
+		constant char *done_msg = (*cbuf == CONTROL('P')) ? NULL : "!done";
+		if (done_msg == NULL)
+			++cbuf;
 		if (*cbuf != '!')
 		{
 			if (shellcmd != NULL)
 				free(shellcmd);
 			shellcmd = fexpand(cbuf);
 		}
-
 		if (!secure_allow(SF_SHELL))
 			break;
 		if (shellcmd == NULL)
-			lsystem("", "!done");
-		else
-			lsystem(shellcmd, "!done");
-		break;
-	case A_PSHELL:
+			shellcmd = "";
+		lsystem(shellcmd, done_msg);
+		break; }
+	case A_PSHELL: {
+		constant char *done_msg = (*cbuf == CONTROL('P')) ? NULL : "#done";
+		if (done_msg == NULL)
+			++cbuf;
 		if (!secure_allow(SF_SHELL))
 			break;
-		lsystem(pr_expand(cbuf), "#done");
-		break;
+		lsystem(pr_expand(cbuf), done_msg);
+		break; }
 #endif
 #if PIPEC
-	case A_PIPE:
+	case A_PIPE: {
+		constant char *done_msg = (*cbuf == CONTROL('P')) ? NULL : "|done";
+		if (done_msg == NULL)
+			++cbuf;
 		if (!secure_allow(SF_PIPE))
 			break;
 		(void) pipe_mark(pipec, cbuf);
-		error("|done", NULL_PARG);
-		break;
+		if (done_msg != NULL)
+			error(done_msg, NULL_PARG);
+		break; }
 #endif
 	}
 }
@@ -895,6 +904,14 @@ static void prompt(void)
 	if (is_filtering())
 		putstr("& ");
 #endif
+	if (search_wrapped)
+	{
+		if (search_type & SRCH_BACK)
+			error("Search hit top; continuing at bottom", NULL_PARG);
+		else
+			error("Search hit bottom; continuing at top", NULL_PARG);
+		search_wrapped = FALSE;
+	}
 	if (p == NULL || *p == '\0')
 	{
 		at_enter(AT_NORMAL|AT_COLOR_PROMPT);
@@ -1825,7 +1842,7 @@ public void commands(void)
 				 */
 				make_display();
 				cmd_exec();
-				lsystem(pr_expand(editproto), (char*)NULL);
+				lsystem(pr_expand(editproto), NULL);
 				break;
 			}
 #endif
