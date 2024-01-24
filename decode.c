@@ -157,6 +157,14 @@ static unsigned char cmdtable[] =
 	CONTROL('X'),CONTROL('V'),0,    A_EXAMINE,
 	':','n',0,                      A_NEXT_FILE,
 	':','p',0,                      A_PREV_FILE,
+	CONTROL('O'),CONTROL('N'),0,    A_OSC8_F_SEARCH,
+	CONTROL('O'),'n',0,             A_OSC8_F_SEARCH,
+	CONTROL('O'),CONTROL('P'),0,    A_OSC8_B_SEARCH,
+	CONTROL('O'),'p',0,             A_OSC8_B_SEARCH,
+	CONTROL('O'),CONTROL('O'),0,    A_OSC8_OPEN,
+	CONTROL('O'),'o',0,             A_OSC8_OPEN,
+	CONTROL('O'),CONTROL('L'),0,    A_OSC8_JUMP,
+	CONTROL('O'),'l',0,             A_OSC8_JUMP,
 	't',0,                          A_NEXT_TAG,
 	'T',0,                          A_PREV_TAG,
 	':','x',0,                      A_INDEX_FILE,
@@ -221,6 +229,19 @@ static unsigned char edittable[] =
 	CONTROL('G'),0,                 EC_ABORT,       /* CTRL-G */
 	ESC,'[','M',0,                  EC_X11MOUSE,    /* X11 mouse report */
 	ESC,'[','<',0,                  EC_X116MOUSE,   /* X11 1006 mouse report */
+};
+
+static unsigned char dflt_vartable[] =
+{
+	'L','E','S','S','_','O','S','C','8','_','m','a','n', 0, EV_OK|A_EXTRA,
+		/* echo '%o' | sed -e "s,^man\:\\([^(]*\\)( *\\([^)]*\\)\.*,-man '\\2' '\\1'," -e"t X" -e"s,\.*,-echo Invalid man link," -e"\: X" */
+		'e','c','h','o',' ','\'','%','o','\'',' ','|',' ','s','e','d',' ','-','e',' ','"','s',',','^','m','a','n','\\',':','\\','\\','(','[','^','(',']','*','\\','\\',')','(',' ','*','\\','\\','(','[','^',')',']','*','\\','\\',')','\\','.','*',',','-','m','a','n',' ','\'','\\','\\','2','\'',' ','\'','\\','\\','1','\'',',','"',' ','-','e','"','t',' ','X','"',' ','-','e','"','s',',','\\','.','*',',','-','e','c','h','o',' ','I','n','v','a','l','i','d',' ','m','a','n',' ','l','i','n','k',',','"',' ','-','e','"','\\',':',' ','X','"',
+		0,
+
+	'L','E','S','S','_','O','S','C','8','_','f','i','l','e', 0, EV_OK|A_EXTRA,
+		/* eval `echo '%o' | sed -e "s,^file://\\([^/]*\\)\\(.*\\),_H=\\1;_P=\\2;_E=0," -e"t X" -e"s,.*,_E=1," -e": X"`; if [ "$_E" = 1 ]; then echo -echo Invalid file link; elif [ -z "$_H" -o "$_H" = localhost -o "$_H" = $HOSTNAME ]; then echo ":e $_P"; else echo -echo Cannot open remote file on "$_H"; fi */
+		'e','v','a','l',' ','`','e','c','h','o',' ','\'','%','o','\'',' ','|',' ','s','e','d',' ','-','e',' ','"','s',',','^','f','i','l','e','\\',':','/','/','\\','\\','(','[','^','/',']','*','\\','\\',')','\\','\\','(','\\','.','*','\\','\\',')',',','_','H','=','\\','\\','1',';','_','P','=','\\','\\','2',';','_','E','=','0',',','"',' ','-','e','"','t',' ','X','"',' ','-','e','"','s',',','\\','.','*',',','_','E','=','1',',','"',' ','-','e','"','\\',':',' ','X','"','`',';',' ','i','f',' ','[',' ','"','$','_','E','"',' ','=',' ','1',' ',']',';',' ','t','h','e','n',' ','e','c','h','o',' ','-','e','c','h','o',' ','I','n','v','a','l','i','d',' ','f','i','l','e',' ','l','i','n','k',';',' ','e','l','i','f',' ','[',' ','-','z',' ','"','$','_','H','"',' ','-','o',' ','"','$','_','H','"',' ','=',' ','l','o','c','a','l','h','o','s','t',' ','-','o',' ','"','$','_','H','"',' ','=',' ','$','H','O','S','T','N','A','M','E',' ',']',';',' ','t','h','e','n',' ','e','c','h','o',' ','"','\\',':','e',' ','$','_','P','"',';',' ','e','l','s','e',' ','e','c','h','o',' ','-','e','c','h','o',' ','C','a','n','n','o','t',' ','o','p','e','n',' ','r','e','m','o','t','e',' ','f','i','l','e',' ','o','n',' ','"','$','_','H','"',';',' ','f','i',
+		0,
 };
 
 /*
@@ -333,6 +354,7 @@ public void init_cmds(void)
 	 */
 	add_fcmd_table(cmdtable, sizeof(cmdtable));
 	add_ecmd_table(edittable, sizeof(edittable));
+	add_sysvar_table(dflt_vartable, sizeof(dflt_vartable));
 #if USERFILE
 #ifdef BINDIR /* For backwards compatibility */
 	/* Try to add tables in the OLD system lesskey file. */
@@ -461,6 +483,16 @@ static void add_var_table(struct tablelist **tlist, unsigned char *buf, size_t l
 	/* {{ We leak the table in buf. expand_evars scribbled in it so it's useless anyway. }} */
 	if (add_cmd_table(tlist, xbuf.data, xbuf.end) < 0)
 		error("Warning: environment variables from lesskey file unavailable", NULL_PARG);
+}
+
+public void add_uvar_table(unsigned char *buf, size_t len)
+{
+	add_var_table(&list_var_tables, buf, len);
+}
+
+public void add_sysvar_table(unsigned char *buf, size_t len)
+{
+	add_var_table(&list_sysvar_tables, buf, len);
 }
 
 /*
@@ -784,7 +816,7 @@ public constant char * lgetenv_ext(constant char *var, unsigned char *env_buf, s
 		env_end = e;
 	}
 	/* Temporarily add env_buf to var_tables, do the lookup, then remove it. */
-	add_var_table(&list_var_tables, env_buf, env_end);
+	add_uvar_table(env_buf, env_end);
 	r = lgetenv(var);
 	pop_cmd_table(&list_var_tables);
 	return r;
@@ -874,8 +906,10 @@ static int new_lesskey(unsigned char *buf, size_t len, lbool sysvar)
 			n = gint(&p);
 			if (p+n >= end)
 				return (-1);
-			add_var_table((sysvar) ? 
-				&list_sysvar_tables : &list_var_tables, p, n);
+			if (sysvar)
+				add_sysvar_table(p, n);
+			else
+				add_uvar_table(p, n);
 			p += n;
 			break;
 		case END_SECTION:
@@ -966,8 +1000,10 @@ static int lesskey_text(constant char *filename, lbool sysvar, lbool content)
 		return (r);
 	add_fcmd_table(tables.cmdtable.buf.data, tables.cmdtable.buf.end);
 	add_ecmd_table(tables.edittable.buf.data, tables.edittable.buf.end);
-	add_var_table(sysvar ? &list_sysvar_tables : &list_var_tables,
-		tables.vartable.buf.data, tables.vartable.buf.end);
+	if (sysvar)
+		add_sysvar_table(tables.vartable.buf.data, tables.vartable.buf.end);
+	else
+		add_uvar_table(tables.vartable.buf.data, tables.vartable.buf.end);
 	return (0);
 }
 

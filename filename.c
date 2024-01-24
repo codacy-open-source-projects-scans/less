@@ -135,7 +135,7 @@ static int metachar(char c)
 /*
  * Insert a backslash before each metacharacter in a string.
  */
-public char * shell_quote(constant char *s)
+public char * shell_quoten(constant char *s, size_t slen)
 {
 	constant char *p;
 	char *np;
@@ -150,7 +150,7 @@ public char * shell_quote(constant char *s)
 	 * Determine how big a string we need to allocate.
 	 */
 	len = 1; /* Trailing null byte */
-	for (p = s;  *p != '\0';  p++)
+	for (p = s;  p < s + slen;  p++)
 	{
 		len++;
 		if (*p == openquote || *p == closequote)
@@ -180,7 +180,7 @@ public char * shell_quote(constant char *s)
 			 * We can't quote a string that contains quotes.
 			 */
 			return (NULL);
-		len = strlen(s) + 3;
+		len = slen + 3;
 	}
 	/*
 	 * Allocate and construct the new string.
@@ -188,10 +188,11 @@ public char * shell_quote(constant char *s)
 	newstr = np = (char *) ecalloc(len, sizeof(char));
 	if (use_quotes)
 	{
-		SNPRINTF3(newstr, len, "%c%s%c", openquote, s, closequote);
+		SNPRINTF4(newstr, len, "%c%.*s%c", openquote, (int) slen, s, closequote);
 	} else
 	{
-		while (*s != '\0')
+		constant char *es = s + slen;
+		while (s < es)
 		{
 			if (metachar(*s))
 			{
@@ -206,6 +207,11 @@ public char * shell_quote(constant char *s)
 		*np = '\0';
 	}
 	return (newstr);
+}
+
+public char * shell_quote(constant char *s)
+{
+	return shell_quoten(s, strlen(s));
 }
 
 /*
@@ -445,10 +451,13 @@ public char * fcomplete(constant char *s)
 /*
  * Try to determine if a file is "binary".
  * This is just a guess, and we need not try too hard to make it accurate.
+ *
+ * The number of bytes read is returned to the caller, because it will
+ * be used later to compare to st_size from stat(2) to see if the file
+ * is lying about its size.
  */
-public int bin_file(int f)
+public int bin_file(int f, ssize_t *n)
 {
-	ssize_t n;
 	int bin_count = 0;
 	char data[256];
 	constant char* p;
@@ -458,10 +467,10 @@ public int bin_file(int f)
 		return (0);
 	if (less_lseek(f, (less_off_t)0, SEEK_SET) == BAD_LSEEK)
 		return (0);
-	n = read(f, data, sizeof(data));
-	if (n <= 0)
+	*n = read(f, data, sizeof(data));
+	if (*n <= 0)
 		return (0);
-	edata = &data[n];
+	edata = &data[*n];
 	for (p = data;  p < edata;  )
 	{
 		if (utf_mode && !is_utf8_well_formed(p, (int) ptr_diff(edata,p)))
@@ -505,7 +514,7 @@ static POSITION seek_filesize(int f)
  * Read a string from a file.
  * Return a pointer to the string in memory.
  */
-static char * readfd(FILE *fd)
+public char * readfd(FILE *fd)
 {
 	struct xbuffer xbuf;
 	xbuf_init(&xbuf);
@@ -768,9 +777,24 @@ public char * lrealpath(constant char *path)
 	if (!is_fake_pathname(path))
 	{
 #if HAVE_REALPATH
+		/*
+		 * Not all systems support the POSIX.1-2008 realpath() behavior
+		 * of allocating when passing a NULL argument. And PATH_MAX is
+		 * not required to be defined, or might contain an exceedingly
+		 * big value. We assume that if it is not defined (such as on
+		 * GNU/Hurd), then realpath() accepts NULL.
+		 */
+#ifndef PATH_MAX
+		char *rpath;
+
+		rpath = realpath(path, NULL);
+		if (rpath != NULL)
+			return (rpath);
+#else
 		char rpath[PATH_MAX];
 		if (realpath(path, rpath) != NULL)
 			return (save(rpath));
+#endif
 #endif
 	}
 	return (save(path));

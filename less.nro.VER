@@ -379,6 +379,12 @@ Go to the next tag, if there were more than one matches for the current tag.
 See the \-t option for more details about tags.
 .IP "T"
 Go to the previous tag, if there were more than one matches for the current tag.
+.IP "\(haO\(haN or \(haOn"
+Search forward in the file for the N-th next OSC8 hyperlink.
+.IP "\(haO\(haP or \(haOp"
+Search backward in the file for the N-th previous OSC8 hyperlink.
+.IP "\(haO\(haL or \(haOl"
+Jump to the currently selected OSC8 hyperlink.
 .IP "= or \(haG or :f"
 Prints some information about the file being viewed,
 including its name
@@ -446,7 +452,7 @@ Exits
 .BR less .
 .PP
 The following
-six
+seven
 commands may or may not be valid, depending on your particular installation.
 .
 .IP v
@@ -485,6 +491,65 @@ no "done" message is printed after the shell command is executed.
 .IP "s filename"
 Save the input to a file.
 This works only if the input is a pipe, not an ordinary file.
+.IP "\(haO\(haO"
+.RS
+Run a shell command to open the URI in the current OSC8 hyperlink,
+selected by a previous \(haO\(haN or \(haO\(haP command.
+To find the shell command,
+the environment variable named "LESS_OSC8_xxx" is read, 
+where "xxx" is the scheme from the URI (the part before the first colon),
+or is empty if there is no colon in the URI.
+The value of the environment variable is then expanded in the same way as 
+prompt strings (in particular, any instance of "%o" is replaced with the URI)
+to produce an OSC8 "handler" shell command.
+The standard output from the handler is an "opener" shell command 
+which is then executed to open the URI.
+.PP
+There are two special cases:
+.RS
+.IP 1.
+If the URI begins with "#", the remainder of the URI is taken to be 
+the value of the id parameter in another OSC8 link in the same file,
+and \(haO\(haO will simply jump to that link.
+.IP 2.
+If the opener begins with the characters ":e" followed by 
+whitespace and a filename,
+then instead of running the opener as a shell command,
+the specified filename is opened in the current instance of
+.BR less .
+.RE
+.PP
+In a simple case where the opener accepts the complete URI
+as a command line parameter, the handler may be as simple as
+.nf
+.sp
+echo mybrowser '%o'
+.sp
+.fi
+In other cases, the URI may need to be modified, so the handler
+may have to do some manipulation of the %o value.
+.PP
+If the LESS_OSC8_xxx variable is not set, links using that scheme 
+cannot be opened. 
+However, there are default handlers for the 
+schemes "man" (used when LESS_OSC_man is not set)
+and "file" (used when LESS_OSC_file is not set),
+which should work on systems which provide the
+.BR sed (1)
+command and a shell with syntax compatible with the Bourne shell
+.BR sh (1).
+.PP
+The URI passed to an OSC8 handler via %o is guaranteed not to contain any single quote
+or double quote characters, but it may contain any other shell metacharacters
+such as semicolons, dollar signs, ampersands, etc.
+The handler should take care to appropriately quote parameters in the opener command,
+to prevent execution of unintended shell commands in the case of opening
+a URI which contains shell metacharacters.
+Also, since the handler command is expanded like a command prompt,
+any metacharacters interpreted by prompt expansion 
+(such as percent, dot, colon, backslash, etc.) must be escaped with a backslash
+(see the PROMPTS section for details).
+.RE
 .IP "\(haX"
 When the "Waiting for data" message is displayed,
 such as while in the F command, pressing \(haX
@@ -1985,6 +2050,10 @@ The line to be used is determined by the \fIX\fP, as with the %b option.
 Replaced by the line number of the last line in the input file.
 .IP "%m"
 Replaced by the total number of input files.
+.IP "%o"
+Replaced by the URI of the currently selected OSC8 hyperlink,
+or a question mark if no hyperlink is selected.
+This is used by OSC8 handlers as explained in the \(haO\(haO command description.
 .IP "%p\fIX\fP"
 Replaced by the percent into the current input file, based on byte offsets.
 The line used is determined by the \fIX\fP as with the %b option.
@@ -2141,6 +2210,8 @@ use of lesskey files (-k and --lesskey-src)
 input preprocessor (LESSOPEN environment variable)
 .IP "logfile"
 log files (s and -o)
+.IP "osc8"
+opening OSC8 links (\(haO\(haO)
 .IP "pipe"
 the pipe command (|) 
 .IP "shell"
@@ -2348,6 +2419,9 @@ The default is 4000 (4 seconds).
 Emulate the
 .BR more (1)
 command.
+.IP LESS_OSC8_xxx
+Where "xxx" is a URI scheme such as "http" or "file",
+sets an OSC8 handler for opening OSC8 links containing a URI with that scheme.
 .IP LESS_TERMCAP_xx
 Where "xx" is any two characters, overrides the definition 
 of the termcap "xx" capability for the terminal.

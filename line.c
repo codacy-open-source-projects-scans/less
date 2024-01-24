@@ -52,7 +52,7 @@ static int curr_last_ansi;
 
 public size_t size_linebuf = 0; /* Size of line buffer (and attr buffer) */
 static struct ansi_state *line_ansi = NULL;
-static int ansi_in_line;
+static lbool ansi_in_line;
 static int hlink_in_line;
 static int line_mark_attr;
 static int cshift;   /* Current left-shift of output line buffer */
@@ -137,9 +137,8 @@ static struct color_map color_map[] = {
 
 /* State while processing an ANSI escape sequence */
 struct ansi_state {
-	int hindex;   /* Index into hyperlink prefix */
-	int hlink;    /* Processing hyperlink address? */
-	int prev_esc; /* Prev char was ESC (to detect ESC-\ seq) */
+	int oindex;   /* Index into OSC8 prefix */
+	osc8_state ostate; /* State while processing OSC8 sequence */
 };
 
 /*
@@ -247,7 +246,7 @@ public void prewind(void)
 	is_null_line = 0;
 	pendc = '\0';
 	in_hilite = 0;
-	ansi_in_line = 0;
+	ansi_in_line = FALSE;
 	hlink_in_line = 0;
 	line_mark_attr = 0;
 	line_pos = NULL_POSITION;
@@ -608,9 +607,8 @@ public struct ansi_state * ansi_start(LWCHAR ch)
 	if (!IS_CSI_START(ch))
 		return NULL;
 	pansi = ecalloc(1, sizeof(struct ansi_state));
-	pansi->hindex = 0;
-	pansi->hlink = 0;
-	pansi->prev_esc = 0;
+	pansi->oindex = 0;
+	pansi->ostate = OSC8_PREFIX;
 	return pansi;
 }
 
@@ -618,30 +616,48 @@ public struct ansi_state * ansi_start(LWCHAR ch)
  * Determine whether the next char in an ANSI escape sequence
  * ends the sequence.
  */
-public int ansi_step(struct ansi_state *pansi, LWCHAR ch)
+public ansi_state ansi_step(struct ansi_state *pansi, LWCHAR ch)
 {
-	if (pansi->hlink)
+	static constant char osc8_prefix[] = ESCS "]8;";
+
+	switch (pansi->ostate)
 	{
-		/* Hyperlink ends with \7 or ESC-backslash. */
-		if (ch == '\7')
-			return ANSI_END;
-		if (pansi->prev_esc)
-			return (ch == '\\') ? ANSI_END : ANSI_ERR;
-		pansi->prev_esc = (ch == ESC);
-		return ANSI_MID;
-	}
-	if (pansi->hindex >= 0)
-	{
-		static char hlink_prefix[] = ESCS "]8;";
-		if (ch == (LWCHAR) hlink_prefix[pansi->hindex] ||
-		    (pansi->hindex == 0 && IS_CSI_START(ch)))
+	case OSC8_PREFIX:
+		if (ch != (LWCHAR) osc8_prefix[pansi->oindex] &&
+		    !(pansi->oindex == 0 && IS_CSI_START(ch)))
 		{
-			pansi->hindex++;
-			if (hlink_prefix[pansi->hindex] == '\0')
-				pansi->hlink = 1; /* now processing hyperlink addr */
-			return ANSI_MID;
+			pansi->ostate = OSC8_NOT; /* not an OSC8 sequence */
+			break;
 		}
-		pansi->hindex = -1; /* not a hyperlink */
+		pansi->oindex++;
+		if (osc8_prefix[pansi->oindex] == '\0') /* end of prefix */
+			pansi->ostate = OSC8_PARAMS;
+		return ANSI_MID;
+	case OSC8_PARAMS:
+		if (ch == ';')
+			pansi->ostate = OSC8_URI;
+		return ANSI_MID;
+	case OSC8_URI:
+		/* URI ends with \7 or ESC-backslash. */
+		if (ch == '\7')
+		{
+			pansi->ostate = OSC8_END;
+			return ANSI_END;
+		}
+		if (ch == ESC)
+			pansi->ostate = OSC8_ST_ESC;
+		return ANSI_MID;
+	case OSC8_ST_ESC:
+		if (ch != '\\') 
+		{
+			return ANSI_ERR;
+		}
+		pansi->ostate = OSC8_END;
+		return ANSI_END;
+	case OSC8_END:
+		return ANSI_END;
+	case OSC8_NOT:
+		break;
 	}
 	/* Check for SGR sequences */
 	if (is_ansi_middle(ch))
@@ -649,6 +665,14 @@ public int ansi_step(struct ansi_state *pansi, LWCHAR ch)
 	if (is_ansi_end(ch))
 		return ANSI_END;
 	return ANSI_ERR;
+}
+
+/*
+ * Return the current OSC8 parsing state.
+ */
+public osc8_state ansi_osc8_state(struct ansi_state *pansi)
+{
+	return pansi->ostate;
 }
 
 /*
@@ -998,7 +1022,7 @@ static int store_ansi(LWCHAR ch, constant char *rep, POSITION pos)
 	{
 	case ANSI_MID:
 		STORE_CHAR(ch, AT_ANSI, rep, pos);
-		if (line_ansi->hlink)
+		if (ansi_osc8_state(line_ansi) == OSC8_PREFIX)
 			hlink_in_line = 1;
 		xbuf_add_char(&last_ansi, (char) ch);
 		break;
@@ -1026,6 +1050,8 @@ static int store_ansi(LWCHAR ch, constant char *rep, POSITION pos)
 		xbuf_reset(&last_ansi);
 		ansi_done(line_ansi);
 		line_ansi = NULL;
+		break;
+	default:
 		break;
 	}
 	return (0);
@@ -1055,7 +1081,7 @@ static int do_append(LWCHAR ch, constant char *rep, POSITION pos)
 	{
 		line_ansi = ansi_start(ch);
 		if (line_ansi != NULL)
-			ansi_in_line = 1;
+			ansi_in_line = TRUE;
 	}
 
 	overstrike = 0;
@@ -1301,8 +1327,10 @@ public int get_col(POSITION line_pos, POSITION spos, POSITION saved_pos, int sav
 				ansi_done(pansi);
 				pansi = NULL;
 			}
-		} else if (ctldisp == OPT_ONPLUS && (pansi = ansi_start(ch)) != NULL) {
-			/* start of ansi sequence */ ;
+		} else if (ctldisp == OPT_ONPLUS && (pansi = ansi_start(ch)) != NULL)
+		{
+			/* start of ansi sequence */
+			(void) ansi_step(pansi, ch);
 		} else if (ch == '\b')
 		{
 			if (proc_backspace == OPT_ONPLUS || (bs_mode == BS_CONTROL && proc_backspace == OPT_OFF))

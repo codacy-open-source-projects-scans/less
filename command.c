@@ -54,6 +54,9 @@ extern void *ml_shell;
 #if EDITOR
 extern constant char *editproto;
 #endif
+#if OSC8_LINK
+extern char *osc8_uri;
+#endif
 extern int shift_count;
 extern int forw_prompt;
 extern int incr_search;
@@ -912,6 +915,16 @@ static void prompt(void)
 			error("Search hit bottom; continuing at top", NULL_PARG);
 		search_wrapped = FALSE;
 	}
+#if OSC8_LINK
+	if (osc8_uri != NULL)
+	{
+		PARG parg;
+		parg.p_string = osc8_uri;
+		error("Link: %s", &parg);
+		free(osc8_uri);
+		osc8_uri = NULL;
+	}
+#endif
 	if (p == NULL || *p == '\0')
 	{
 		at_enter(AT_NORMAL|AT_COLOR_PROMPT);
@@ -1145,9 +1158,9 @@ static void multi_search(constant char *pattern, int n, int silent)
 {
 	int nomore;
 	IFILE save_ifile;
-	int changed_file;
+	lbool changed_file;
 
-	changed_file = 0;
+	changed_file = FALSE;
 	save_ifile = save_curr_ifile();
 
 	if ((search_type & (SRCH_FORW|SRCH_BACK)) == 0)
@@ -1167,7 +1180,7 @@ static void multi_search(constant char *pattern, int n, int silent)
 			unsave_ifile(save_ifile);
 			return;
 		}
-		changed_file = 1;
+		changed_file = TRUE;
 		search_type &= ~SRCH_FIRST_FILE;
 	}
 
@@ -1212,7 +1225,7 @@ static void multi_search(constant char *pattern, int n, int silent)
 			nomore = edit_prev(1);
 		if (nomore)
 			break;
-		changed_file = 1;
+		changed_file = TRUE;
 	}
 
 	/*
@@ -1725,6 +1738,49 @@ public void commands(void)
 			mca_search();
 			c = getcc();
 			goto again;
+
+		case A_OSC8_F_SEARCH:
+#if OSC8_LINK
+			cmd_exec();
+			if (number <= 0)
+				number = 1;
+			osc8_search(SRCH_FORW, NULL, number);
+#else
+			error("Command not available", NULL_PARG);
+#endif
+			break;
+
+		case A_OSC8_B_SEARCH:
+#if OSC8_LINK
+			cmd_exec();
+			if (number <= 0)
+				number = 1;
+			osc8_search(SRCH_BACK, NULL, number);
+#else
+			error("Command not available", NULL_PARG);
+#endif
+			break;
+
+		case A_OSC8_OPEN:
+#if OSC8_LINK
+			if (secure_allow(SF_OSC8_OPEN))
+			{
+				cmd_exec();
+				osc8_open();
+				break;
+			}
+#endif
+			error("Command not available", NULL_PARG);
+			break;
+
+		case A_OSC8_JUMP:
+#if OSC8_LINK
+			cmd_exec();
+			osc8_jump();
+#else
+			error("Command not available", NULL_PARG);
+#endif
+			break;
 
 		case A_FILTER:
 #if HILITE_SEARCH
