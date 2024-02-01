@@ -694,7 +694,7 @@ static int cmd_search(constant char *cmd, constant char *table, constant char *e
 			 * but not the end of the string in the command table.
 			 * The user's command is incomplete.
 			 */
-			return (A_PREFIX);
+			return A_PREFIX;
 		} else
 		{
 			/*
@@ -825,7 +825,7 @@ public constant char * lgetenv_ext(constant char *var, unsigned char *env_buf, s
 /*
  * Is a string null or empty? 
  */
-public int isnullenv(constant char *s)
+public lbool isnullenv(constant char *s)
 {
 	return (s == NULL || *s == '\0');
 }

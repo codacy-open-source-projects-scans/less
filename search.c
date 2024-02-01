@@ -614,8 +614,8 @@ static void shift_visible(POSITION line_pos, size_t start_off, size_t end_off)
 {
 	POSITION start_pos = line_pos + start_off;
 	POSITION end_pos = line_pos + end_off;
-	int start_col = get_col(line_pos, start_pos, NULL_POSITION, -1);
-	int end_col = get_col(line_pos, end_pos, start_pos, start_col);
+	int start_col = col_from_pos(line_pos, start_pos, NULL_POSITION, -1);
+	int end_col = col_from_pos(line_pos, end_pos, start_pos, start_col);
 	int swidth = sc_width - line_pfx_width() - (rscroll_char ? 1 : 0);
 	int new_hshift;
 	if (start_col < 0 || end_col < 0)
@@ -626,7 +626,7 @@ static void shift_visible(POSITION line_pos, size_t start_off, size_t end_off)
 		new_hshift = hshift; /* already visible; leave hshift unchanged */
 	else 
 	{
-		int eol_col = get_col(line_pos, NULL_POSITION, end_pos, end_col) - swidth;
+		int eol_col = col_from_pos(line_pos, NULL_POSITION, end_pos, end_col) - swidth;
 		if (start_col >= eol_col) /* whole string is in last screen */
 			new_hshift = eol_col;
 		else /* shift it to column match_shift */
@@ -1345,6 +1345,16 @@ static lbool osc8_param_match(struct osc8_parse_info *op, constant char *param)
 }
 
 /*
+ * Is the URI in an OSC8 sequence empty?
+ * "Empty" means zero length, or equal to "#".
+ */
+static lbool osc8_empty_uri(constant struct osc8_parse_info *op)
+{
+	return op->uri_end == op->uri_start ||
+	       (op->uri_end == op->uri_start+1 && op->uri_start[0] == '#');
+}
+
+/*
  * Find the next OSC8 hyperlink in a line.
  * A hyperlink is two OSC8 sequences (the first with a nonempty URI)
  * plus the non-empty text between them.
@@ -1367,7 +1377,7 @@ static lbool osc8_search_line1(int search_type, POSITION linepos, POSITION spos,
 			/* Find the first OSC8 sequence in the line with a nonempty URI,
 			 * which begins the hypertext. */
 			if (osc8_parse(linep, line_end, &op1) &&
-			    (op1.uri_end > op1.uri_start || param != NULL))
+			    (!osc8_empty_uri(&op1) || param != NULL))
 			{
 				/* Now find the next OSC8 sequence, which ends the hypertext. */
 				constant char *linep2;
@@ -1392,7 +1402,7 @@ static lbool osc8_search_line1(int search_type, POSITION linepos, POSITION spos,
 				return FALSE;
 			if (osc8_parse(linep, line_end, &op1))
 			{
-				if (((op1.uri_end > op1.uri_start && op2.osc8_start > op1.osc8_end) || param != NULL) &&
+				if (((!osc8_empty_uri(&op1) && op2.osc8_start > op1.osc8_end) || param != NULL) &&
 				    osc8_param_match(&op1, param))
 					break;
 				op2 = op1;
@@ -1773,7 +1783,7 @@ public void osc8_search(int search_type, constant char *param, int matches)
 	osc8_search_param = NULL;
 	if (match != 0)
 	{
-		error("OSC8 link not found", NULL_PARG);
+		error("OSC 8 link not found", NULL_PARG);
 		return;
 	}
 	jump_loc(pos, jump_sline);
@@ -1877,6 +1887,8 @@ public void osc8_open(void)
 	}
 	SNPRINTF3(env_name, sizeof(env_name), "%s%.*s", env_name_pfx, (int) scheme_len, op.uri_start);
 	handler = lgetenv(env_name);
+	if (isnullenv(handler) || strcmp(handler, "-") == 0)
+        handler = lgetenv("LESS_OSC8_ANY");
 	if (isnullenv(handler))
 	{
 		PARG parg;
@@ -2344,10 +2356,10 @@ public void set_filter_pattern(constant char *pattern, int search_type)
 /*
  * Is there a line filter in effect?
  */
-public int is_filtering(void)
+public lbool is_filtering(void)
 {
 	if (ch_getflags() & CH_HELPFILE)
-		return (0);
+		return (FALSE);
 	return (filter_infos != NULL);
 }
 #endif

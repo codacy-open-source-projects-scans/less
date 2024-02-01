@@ -2478,7 +2478,7 @@ static int parse_color6(constant char **ps)
  *  CV_4BIT: fg/bg values are OR of CV_{RGB} bits.
  *  CV_6BIT: fg/bg values are integers entered by user.
  */
-public COLOR_TYPE parse_color(constant char *str, int *p_fg, int *p_bg)
+public COLOR_TYPE parse_color(constant char *str, mutable int *p_fg, mutable int *p_bg)
 {
 	int fg;
 	int bg;
@@ -2717,7 +2717,7 @@ public void at_switch(int attr)
 	}
 }
 
-public int is_at_equiv(int attr1, int attr2)
+public lbool is_at_equiv(int attr1, int attr2)
 {
 	attr1 = apply_at_specials(attr1);
 	attr2 = apply_at_specials(attr2);
