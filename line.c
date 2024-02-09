@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1984-2023  Mark Nudelman
+ * Copyright (C) 1984-2024  Mark Nudelman
  *
  * You may distribute under the terms of either the GNU General Public
  * License or the Less License, as specified in the README file.
@@ -912,11 +912,11 @@ static int flush_mbc_buf(POSITION pos)
  * Expand tabs into spaces, handle underlining, boldfacing, etc.
  * Returns 0 if ok, 1 if couldn't fit in buffer.
  */
-public int pappend(char c, POSITION pos)
+public int pappend_b(char c, POSITION pos, lbool before_pendc)
 {
 	int r;
 
-	if (pendc)
+	if (pendc && !before_pendc)
 	{
 		if (c == '\r' && pendc == '\r')
 			return (0);
@@ -1000,6 +1000,11 @@ public int pappend(char c, POSITION pos)
 		r = (!utf_mode) ? 1 : mbc_buf_index;
 	}
 	return (r);
+}
+
+public int pappend(char c, POSITION pos)
+{
+	return pappend_b(c, pos, FALSE);
 }
 
 static int store_control_char(LWCHAR ch, constant char *rep, POSITION pos)
@@ -1295,7 +1300,7 @@ public void pdone(int endline, int chopped, int forw)
 
 /*
  * Return the column number (screen position) of a given file position in its line.
- * line_pos = position of first char in line
+ * linepos = position of first char in line
  * spos = position of char being queried
  * saved_pos = position of a known column, or NULL_POSITION if no known column
  * saved_col = column number of a known column, or -1 if no known column
@@ -1303,21 +1308,29 @@ public void pdone(int endline, int chopped, int forw)
  * This attempts to mimic the logic in pappend() and the store_*() functions.
  * Duplicating this complicated logic is not a good design.
  */
-public int col_from_pos(POSITION line_pos, POSITION spos, POSITION saved_pos, int saved_col)
+
+struct col_pos { int col; POSITION pos; };
+
+static void col_vs_pos(POSITION linepos, mutable struct col_pos *cp, POSITION saved_pos, int saved_col)
 {
-	int col = saved_col;
+	int col = (saved_col < 0) ? 0 : saved_col;
 	LWCHAR prev_ch = 0;
 	struct ansi_state *pansi = NULL;
 	char utf8_buf[MAX_UTF_CHAR_LEN];
 	int utf8_len = 0;
+	POSITION chpos;
 
-	if (ch_seek(saved_pos != NULL_POSITION ? saved_pos : line_pos))
-		return -1;
-	while (spos == NULL_POSITION || ch_tell() < spos)
+	if (ch_seek(saved_pos != NULL_POSITION ? saved_pos : linepos))
+		return;
+	for (;;)
 	{
-		int ich = ch_forw_get();
-		char ch = (char) ich;
+		int ich;
+		char ch;
 		int cw = 0;
+
+		chpos = ch_tell();
+		ich = ch_forw_get();
+		ch = (char) ich;
 		if (ich == EOI || ch == '\n')
 			break;
 		if (pansi != NULL)
@@ -1364,10 +1377,34 @@ public int col_from_pos(POSITION line_pos, POSITION spos, POSITION saved_pos, in
 		{
 			utf8_len = 0; /* flush invalid UTF-8 */
 		}
+
+		if (cp->pos != NULL_POSITION && chpos == cp->pos) /* found the position we want */
+			break;
+		if (cp->col >= 0 && col >= cp->col && cw > 0) /* found the column we want */
+			break;
 		col += cw;
 		prev_ch = ch;
 	}
-	return col;
+	cp->col = col;
+	cp->pos = chpos;
+}
+
+public int col_from_pos(POSITION linepos, POSITION spos, POSITION saved_pos, int saved_col)
+{
+	struct col_pos cp;
+	cp.pos = spos;
+	cp.col = -1;
+	col_vs_pos(linepos, &cp, saved_pos, saved_col);
+	return cp.col;
+}
+
+public POSITION pos_from_col(POSITION linepos, int col, POSITION saved_pos, int saved_col)
+{
+	struct col_pos cp;
+	cp.col = col + hshift - line_pfx_width();
+	cp.pos = NULL_POSITION;
+	col_vs_pos(linepos, &cp, saved_pos, saved_col);
+	return cp.pos;
 }
 
 /*

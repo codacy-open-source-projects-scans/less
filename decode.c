@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1984-2023  Mark Nudelman
+ * Copyright (C) 1984-2024  Mark Nudelman
  *
  * You may distribute under the terms of either the GNU General Public
  * License or the Less License, as specified in the README file.
@@ -98,8 +98,6 @@ static unsigned char cmdtable[] =
 	ESC,'<',0,                      A_GOLINE,
 	'p',0,                          A_PERCENT,
 	'%',0,                          A_PERCENT,
-	ESC,'[',0,                      A_LSHIFT,
-	ESC,']',0,                      A_RSHIFT,
 	ESC,'(',0,                      A_LSHIFT,
 	ESC,')',0,                      A_RSHIFT,
 	ESC,'{',0,                      A_LLSHIFT,
@@ -516,11 +514,16 @@ static int mouse_wheel_up(void)
  */
 static int mouse_button_left(int x, int y)
 {
-	(void) x;
 	/*
 	 * {{ It would be better to return an action and then do this 
 	 *    in commands() but it's nontrivial to pass y to it. }}
 	 */
+#if OSC8_LINK
+	if (osc8_click(y, x))
+		return (A_NOACTION);
+#else
+	(void) x;
+#endif /* OSC8_LINK */
 	if (y < sc_height-1)
 	{
 		setmark('#', y);
@@ -694,7 +697,9 @@ static int cmd_search(constant char *cmd, constant char *table, constant char *e
 			 * but not the end of the string in the command table.
 			 * The user's command is incomplete.
 			 */
-			return A_PREFIX;
+			if (a == A_INVALID)
+				a = A_PREFIX;
+			q = cmd-1;
 		} else
 		{
 			/*

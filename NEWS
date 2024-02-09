@@ -13,8 +13,8 @@
 
 	Major changes between "less" versions 643 and 650
 
-* Add ^O^N, ^O^P, ^O^L and ^O^O commands to find and open OSC8 hyperlinks
-  (github #251).
+* Add ^O^N, ^O^P, ^O^L and ^O^O commands and mouse clicks (with --mouse)
+  to find and open OSC8 hyperlinks (github #251).
 
 * Add --match-shift option.
 
@@ -84,6 +84,9 @@
 * Fix bug with --mouse on Windows when used with pipes (github #440).
 
 * Fix bug in --+OPTION command line syntax.
+
+* Fix display bug when using -w with an empty line with a CR/LF
+  line ending (github #474).
 
 * Update Unicode tables.
 
