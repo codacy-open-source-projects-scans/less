@@ -1027,7 +1027,7 @@ static int store_ansi(LWCHAR ch, constant char *rep, POSITION pos)
 	{
 	case ANSI_MID:
 		STORE_CHAR(ch, AT_ANSI, rep, pos);
-		if (ansi_osc8_state(line_ansi) == OSC8_PREFIX)
+		if (ansi_osc8_state(line_ansi) == OSC8_PARAMS)
 			hlink_in_line = 1;
 		xbuf_add_char(&last_ansi, (char) ch);
 		break;
@@ -1736,7 +1736,7 @@ public int set_color_map(int attr, constant char *colorstr)
 		return -1;
 	if (strlen(colorstr)+1 > sizeof(color_map[cx].color))
 		return -1;
-	if (*colorstr != '\0' && parse_color(colorstr, NULL, NULL) == CT_NULL)
+	if (*colorstr != '\0' && parse_color(colorstr, NULL, NULL, NULL) == CT_NULL)
 		return -1;
 	strcpy(color_map[cx].color, colorstr);
 	return 0;

@@ -290,6 +290,69 @@ public char * homefile(constant char *filename)
 	return (NULL);
 }
 
+typedef struct xcpy { char *dest; size_t copied; } xcpy;
+
+static void xcpy_char(xcpy *xp, char ch)
+{
+	if (xp->dest != NULL) *(xp->dest)++ = ch; 
+	xp->copied++;
+}
+
+static void xcpy_filename(xcpy *xp, constant char *str)
+{
+	/* If filename contains spaces, quote it 
+	 * to prevent edit_list from splitting it. */
+	lbool quote = (strchr(str, ' ') != NULL);
+	if (quote)
+		xcpy_char(xp, openquote);
+	for (;  *str != '\0';  str++)
+		xcpy_char(xp, *str);
+	if (quote)
+		xcpy_char(xp, closequote);
+}
+
+static size_t fexpand_copy(constant char *fr, char *to)
+{
+	xcpy xp;
+	xp.copied = 0;
+	xp.dest = to;
+
+	for (;  *fr != '\0';  fr++)
+	{
+		lbool expand = FALSE;
+		switch (*fr)
+		{
+		case '%':
+		case '#':
+			if (fr[1] == *fr)
+			{
+				/* Two identical chars. Output just one. */
+				fr += 1;
+			} else 
+			{
+				/* Single char. Expand to a (quoted) file name. */
+				expand = TRUE;
+			}
+			break;
+		default:
+			break;
+		}
+		if (expand)
+		{
+			IFILE ifile = (*fr == '%') ? curr_ifile : (*fr == '#') ? old_ifile : NULL_IFILE;
+			if (ifile == NULL_IFILE)
+				xcpy_char(&xp, *fr);
+			else
+				xcpy_filename(&xp, get_filename(ifile));
+		} else
+		{
+			xcpy_char(&xp, *fr);
+		}
+	}
+	if (xp.dest != NULL) xcpy_char(&xp, '\0');
+	return xp.copied;
+}
+
 /*
  * Expand a string, substituting any "%" with the current filename,
  * and any "#" with the previous filename.
@@ -299,89 +362,20 @@ public char * homefile(constant char *filename)
  */
 public char * fexpand(constant char *s)
 {
-	constant char *fr;
-	char *to;
 	size_t n;
 	char *e;
-	IFILE ifile;
-
-#define fchar_ifile(c) \
-	((c) == '%' ? curr_ifile : \
-	 (c) == '#' ? old_ifile : NULL_IFILE)
 
 	/*
 	 * Make one pass to see how big a buffer we 
 	 * need to allocate for the expanded string.
 	 */
-	n = 0;
-	for (fr = s;  *fr != '\0';  fr++)
-	{
-		switch (*fr)
-		{
-		case '%':
-		case '#':
-			if (fr > s && fr[-1] == *fr)
-			{
-				/*
-				 * Second (or later) char in a string
-				 * of identical chars.  Treat as normal.
-				 */
-				n++;
-			} else if (fr[1] != *fr)
-			{
-				/*
-				 * Single char (not repeated).  Treat specially.
-				 */
-				ifile = fchar_ifile(*fr);
-				if (ifile == NULL_IFILE)
-					n++;
-				else
-					n += strlen(get_filename(ifile));
-			}
-			/*
-			 * Else it is the first char in a string of
-			 * identical chars.  Just discard it.
-			 */
-			break;
-		default:
-			n++;
-			break;
-		}
-	}
-
-	e = (char *) ecalloc(n+1, sizeof(char));
+	n = fexpand_copy(s, NULL);
+	e = (char *) ecalloc(n, sizeof(char));
 
 	/*
 	 * Now copy the string, expanding any "%" or "#".
 	 */
-	to = e;
-	for (fr = s;  *fr != '\0';  fr++)
-	{
-		switch (*fr)
-		{
-		case '%':
-		case '#':
-			if (fr > s && fr[-1] == *fr)
-			{
-				*to++ = *fr;
-			} else if (fr[1] != *fr)
-			{
-				ifile = fchar_ifile(*fr);
-				if (ifile == NULL_IFILE)
-					*to++ = *fr;
-				else
-				{
-					strcpy(to, get_filename(ifile));
-					to += strlen(to);
-				}
-			}
-			break;
-		default:
-			*to++ = *fr;
-			break;
-		}
-	}
-	*to = '\0';
+	fexpand_copy(s, e);
 	return (e);
 }
 
