@@ -164,17 +164,22 @@ static void win32_deinit_term();
 #endif
 
 #if MSDOS_COMPILER
-public int nm_fg_color;         /* Color of normal text */
-public int nm_bg_color;
-public int bo_fg_color;         /* Color of bold text */
-public int bo_bg_color;
-public int ul_fg_color;         /* Color of underlined text */
-public int ul_bg_color;
-public int so_fg_color;         /* Color of standout text */
-public int so_bg_color;
-public int bl_fg_color;         /* Color of blinking text */
-public int bl_bg_color;
-static int sy_fg_color;         /* Color of system text (before less) */
+public int nm_fg_color = CV_ERROR; /* Color of normal text */
+public int nm_bg_color = CV_ERROR;
+public int nm_attr = 0;
+public int bo_fg_color = CV_ERROR; /* Color of bold text */
+public int bo_bg_color = CV_ERROR;
+public int bo_attr = 0;
+public int ul_fg_color = CV_ERROR; /* Color of underlined text */
+public int ul_bg_color = CV_ERROR;
+public int ul_attr = 0;
+public int so_fg_color = CV_ERROR; /* Color of standout text */
+public int so_bg_color = CV_ERROR;
+public int so_attr = 0;
+public int bl_fg_color = CV_ERROR; /* Color of blinking text */
+public int bl_bg_color = CV_ERROR;
+public int bl_attr = 0;
+static int sy_fg_color;            /* Color of system text (before less) */
 static int sy_bg_color;
 public int sgr_mode;            /* Honor ANSI sequences rather than using above */
 #if MSDOS_COMPILER==WIN32C
@@ -1132,6 +1137,27 @@ public constant char * special_key_str(int key)
 	return (s);
 }
 
+#if MSDOS_COMPILER
+public void init_win_colors(void)
+{
+	if (nm_fg_color == CV_ERROR || nm_fg_color == CV_NOCHANGE) nm_fg_color = sy_fg_color;
+	if (nm_bg_color == CV_ERROR || nm_bg_color == CV_NOCHANGE) nm_bg_color = sy_bg_color;
+	if (bo_fg_color == CV_NOCHANGE) bo_fg_color = sy_fg_color; else if (bo_fg_color == CV_ERROR) bo_fg_color = sy_fg_color | 8;
+	if (bo_bg_color == CV_NOCHANGE) bo_bg_color = sy_bg_color; else if (bo_bg_color == CV_ERROR) bo_bg_color = sy_bg_color;
+	if (ul_fg_color == CV_NOCHANGE) ul_fg_color = sy_fg_color; else if (ul_fg_color == CV_ERROR) ul_fg_color = (sy_bg_color == 3 || sy_bg_color == 11) ? 0 : 11;
+	if (ul_bg_color == CV_NOCHANGE) ul_bg_color = sy_bg_color; else if (ul_bg_color == CV_ERROR) ul_bg_color = sy_bg_color;
+	if (so_fg_color == CV_NOCHANGE) so_fg_color = sy_fg_color; else if (so_fg_color == CV_ERROR) so_fg_color = sy_bg_color;
+	if (so_bg_color == CV_NOCHANGE) so_bg_color = sy_bg_color; else if (so_bg_color == CV_ERROR) so_bg_color = sy_fg_color;
+	if (bl_fg_color == CV_NOCHANGE) bl_fg_color = sy_fg_color; else if (bl_fg_color == CV_ERROR) bl_fg_color = ul_bg_color;
+	if (bl_bg_color == CV_NOCHANGE) bl_bg_color = sy_bg_color; else if (bl_bg_color == CV_ERROR) bl_bg_color = ul_fg_color;
+	nm_fg_color |= nm_attr;
+	bo_fg_color |= bo_attr;
+	ul_fg_color |= ul_attr;
+	so_fg_color |= so_attr;
+	bl_fg_color |= bl_attr;
+}
+#endif /* MSDOS_COMPILER */
+
 /*
  * Get terminal capabilities via termcap.
  */
@@ -1179,24 +1205,13 @@ public void get_term(void)
 #endif
 #endif
 #endif
-	nm_fg_color = sy_fg_color;
-	nm_bg_color = sy_bg_color;
-	bo_fg_color = sy_fg_color | 8;
-	bo_bg_color = sy_bg_color;
-	ul_fg_color = (sy_bg_color == 3 || sy_bg_color == 11) ? 0 : 11;
-	ul_bg_color = sy_bg_color;
-	so_fg_color = sy_bg_color;
-	so_bg_color = sy_fg_color;
-	bl_fg_color = ul_bg_color;
-	bl_bg_color = ul_fg_color;
-	sgr_mode = 0;
+	init_win_colors();
 
 	/*
 	 * Get size of the screen.
 	 */
 	scrsize();
 	pos_init();
-
 
 #else /* !MSDOS_COMPILER */
 {
@@ -2478,11 +2493,11 @@ static int parse_color6(constant char **ps)
  *  CV_4BIT: fg/bg values are OR of CV_{RGB} bits.
  *  CV_6BIT: fg/bg values are integers entered by user.
  */
-public COLOR_TYPE parse_color(constant char *str, mutable int *p_fg, mutable int *p_bg, mutable CHAR_ATTR *p_attr)
+public COLOR_TYPE parse_color(constant char *str, mutable int *p_fg, mutable int *p_bg, mutable CHAR_ATTR *p_cattr)
 {
 	int fg;
 	int bg = CV_ERROR;
-	CHAR_ATTR attr = ATTR_NULL;
+	CHAR_ATTR cattr = CATTR_NULL;
 	COLOR_TYPE type = CT_NULL;
 
 	if (str == NULL || *str == '\0')
@@ -2493,7 +2508,7 @@ public COLOR_TYPE parse_color(constant char *str, mutable int *p_fg, mutable int
 	fg = parse_color4(*str);
 	if (fg != CV_ERROR)
 	{
-		if (str[1] == '\0' || strchr("*~_&", str[1]) != NULL)
+		if (str[1] == '\0' || strchr("*~_&dsul", str[1]) != NULL)
 		{
 			bg = CV_NOCHANGE;
 			str++; /* skip the fg char */
@@ -2526,20 +2541,20 @@ public COLOR_TYPE parse_color(constant char *str, mutable int *p_fg, mutable int
 	{
 		for (;; str++)
 		{
-			if (*str == '*')
-				attr |= ATTR_BOLD;
-			else if (*str == '~')
-				attr |= ATTR_STANDOUT;
-			else if (*str == '_')
-				attr |= ATTR_UNDERLINE;
-			else if (*str == '&')
-				attr |= ATTR_BLINK;
+			if (*str == '*' || *str == 'd')
+				cattr |= CATTR_BOLD;
+			else if (*str == '~' || *str == 's')
+				cattr |= CATTR_STANDOUT;
+			else if (*str == '_' || *str == 'u')
+				cattr |= CATTR_UNDERLINE;
+			else if (*str == '&' || *str == 'l') /* can't use 'k' because of conflict with "black" */
+				cattr |= CATTR_BLINK;
 			else
 				break;
 		}
 		if (p_fg != NULL) *p_fg = fg;
 		if (p_bg != NULL) *p_bg = bg;
-		if (p_attr != NULL) *p_attr = attr;
+		if (p_cattr != NULL) *p_cattr = cattr;
 	}
 	return type;
 }
@@ -2582,15 +2597,15 @@ static void tput_fmt(constant char *fmt, int color, int (*f_putc)(int))
 	attrcolor = color;
 }
 
-static void tput_char_attr(CHAR_ATTR attr, int (*f_putc)(int))
+static void tput_char_cattr(CHAR_ATTR cattr, int (*f_putc)(int))
 {
-	if (attr & ATTR_UNDERLINE)
+	if (cattr & CATTR_UNDERLINE)
 		ltputs(sc_u_in, 1, f_putc);
-	if (attr & ATTR_BOLD)
+	if (cattr & CATTR_BOLD)
 		ltputs(sc_b_in, 1, f_putc);
-	if (attr & ATTR_BLINK)
+	if (cattr & CATTR_BLINK)
 		ltputs(sc_bl_in, 1, f_putc);
-	if (attr & ATTR_STANDOUT)
+	if (cattr & CATTR_STANDOUT)
 		ltputs(sc_s_in, 1, f_putc);
 }
 
@@ -2598,7 +2613,7 @@ static void tput_color(constant char *str, int (*f_putc)(int))
 {
 	int fg;
 	int bg;
-	CHAR_ATTR attr;
+	CHAR_ATTR cattr;
 
 	if (str != NULL && strcmp(str, "*") == 0)
 	{
@@ -2606,21 +2621,21 @@ static void tput_color(constant char *str, int (*f_putc)(int))
 		tput_fmt(ESCS"[m", -1, f_putc);
 		return;
 	}
-	switch (parse_color(str, &fg, &bg, &attr))
+	switch (parse_color(str, &fg, &bg, &cattr))
 	{
 	case CT_4BIT:
 		if (fg >= 0)
 			tput_fmt(ESCS"[%dm", sgr_color(fg), f_putc);
 		if (bg >= 0)
 			tput_fmt(ESCS"[%dm", sgr_color(bg)+10, f_putc);
-		tput_char_attr(attr, f_putc);
+		tput_char_cattr(cattr, f_putc);
 		break;
 	case CT_6BIT:
 		if (fg >= 0)
 			tput_fmt(ESCS"[38;5;%dm", fg, f_putc);
 		if (bg >= 0)
 			tput_fmt(ESCS"[48;5;%dm", bg, f_putc);
-		tput_char_attr(attr, f_putc);
+		tput_char_cattr(cattr, f_putc);
 		break;
 	default:
 		break;
@@ -2661,17 +2676,30 @@ static lbool WIN32put_fmt(constant char *fmt, int color)
 		WIN32textout(buf, (size_t) len);
 	return TRUE;
 }
+
+static void win_set_cattr(CHAR_ATTR cattr)
+{
+	if (cattr & CATTR_UNDERLINE)
+		WIN32textout(ESCS"[4m", 4);
+	if (cattr & CATTR_BOLD)
+		WIN32textout(ESCS"[1m", 4);
+	if (cattr & CATTR_BLINK)
+		WIN32textout(ESCS"[5m", 4);
+	if (cattr & CATTR_STANDOUT)
+		WIN32textout(ESCS"[7m", 4);
+}
 #endif
 
 static lbool win_set_color(int attr)
 {
 	int fg;
 	int bg;
+	CHAR_ATTR cattr;
 	lbool out = FALSE;
 	constant char *str = get_color_map(attr);
 	if (str == NULL || str[0] == '\0')
 		return FALSE;
-	switch (parse_color(str, &fg, &bg, NULL))
+	switch (parse_color(str, &fg, &bg, &cattr))
 	{
 	case CT_4BIT:
 		if (fg >= 0 && bg >= 0)
@@ -2687,6 +2715,10 @@ static lbool win_set_color(int attr)
 			SET_BG_COLOR(bg);
 			out = TRUE;
 		}
+#if MSDOS_COMPILER==WIN32C
+		if (vt_enabled)
+			win_set_cattr(cattr);
+#endif
 		break;
 #if MSDOS_COMPILER==WIN32C
 	case CT_6BIT:
@@ -2696,6 +2728,7 @@ static lbool win_set_color(int attr)
 				out = WIN32put_fmt(ESCS"[38;5;%dm", fg);
 			if (bg > 0)
 				out = WIN32put_fmt(ESCS"[48;5;%dm", bg);
+			win_set_cattr(cattr);
 		}
 		break;
 #endif
