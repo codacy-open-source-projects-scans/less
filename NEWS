@@ -11,7 +11,7 @@
 
 ======================================================================
 
-	Major changes between "less" versions 643 and 653
+	Major changes between "less" versions 643 and 654
 
 * Add ^O^N, ^O^P, ^O^L and ^O^O commands and mouse clicks (with --mouse)
   to find and open OSC8 hyperlinks (github #251).
@@ -66,6 +66,10 @@
 
 * Allow --rscroll to accept non-ASCII characters (github #483).
 
+* Allow the parameter to certain options to be terminated with a
+  space (--color, --quotes, --rscroll, --search-options 
+  and --intr) (github #495).
+
 * Fix bug where # substitution failed after viewing help (github #420).
 
 * Fix crash if files are deleted while less is viewing them (github #404).
@@ -92,8 +96,6 @@
 
 * Fix display bug when using -w with an empty line with a CR/LF
   line ending (github #474).
-
-* Fix timing bug on systems with usleep but without nanosleep (github #489).
 
 * When substituting '#' or '%' with a filename, quote the filename
   if it contains a space (github #480).
