@@ -79,7 +79,17 @@ public void put_line(void)
 	at_exit();
 }
 
+#if MSDOS_COMPILER==WIN32C || MSDOS_COMPILER==BORLANDC || MSDOS_COMPILER==DJGPPC
+/*
+ * win_flush has at least one non-critical issue when an escape sequence
+ * begins at the last char of the buffer, and possibly more issues.
+ * as a temporary measure to reduce likelyhood of encountering end-of-buffer
+ * issues till the SGR parser is replaced, use bigger (8K) buffer.
+ */
+static char obuf[OUTBUF_SIZE * 8];
+#else
 static char obuf[OUTBUF_SIZE];
+#endif
 static char *ob = obuf;
 static int outfd = 2; /* stderr */
 
@@ -236,6 +246,12 @@ static void set_win_colors(t_sgr *sgr)
 	WIN32setcolors(fg, bg);
 }
 
+/* like is_ansi_end, but doesn't assume c != 0  (returns 0 for c == 0) */
+static int is_ansi_end_0(char c)
+{
+	return c && is_ansi_end((unsigned char)c);
+}
+
 static void win_flush(void)
 {
 	if (ctldisp != OPT_ONPLUS
@@ -294,7 +310,7 @@ static void win_flush(void)
 					anchor = p;
 				}
 				p += 2;  /* Skip the "ESC-[" */
-				if (is_ansi_end(*p))
+				if (is_ansi_end_0(*p))
 				{
 					/*
 					 * Handle null escape sequence
@@ -313,7 +329,7 @@ static void win_flush(void)
 				 * Parse and apply SGR values to the SGR state
 				 * based on the escape sequence. 
 				 */
-				while (!is_ansi_end(*p))
+				while (!is_ansi_end_0(*p))
 				{
 					char *q;
 					long code = strtol(p, &q, 10);
@@ -326,14 +342,13 @@ static void win_flush(void)
 						 * in the buffer.
 						 */
 						size_t slop = ptr_diff(q, anchor);
-						/* {{ strcpy args overlap! }} */
-						strcpy(obuf, anchor);
+						memmove(obuf, anchor, slop);
 						ob = &obuf[slop];
 						return;
 					}
 
 					if (q == p ||
-						(!is_ansi_end(*q) && *q != ';'))
+						(!is_ansi_end_0(*q) && *q != ';'))
 					{
 						/*
 						 * can't parse. passthrough
@@ -355,7 +370,7 @@ static void win_flush(void)
 
 					p = q;
 				}
-				if (!is_ansi_end(*p) || p == p_next)
+				if (!is_ansi_end_0(*p) || p == p_next)
 					break;
 
 				if (sgr_bad_sync && vt_enabled) {
