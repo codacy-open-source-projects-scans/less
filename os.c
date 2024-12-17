@@ -32,6 +32,9 @@
 #if HAVE_ERRNO_H
 #include <errno.h>
 #endif
+#if MUST_DEFINE_ERRNO
+extern int errno;
+#endif
 #if HAVE_VALUES_H
 #include <values.h>
 #endif
@@ -66,13 +69,15 @@ static lbool any_data = FALSE;
 #define LONG_JUMP       longjmp
 #endif
 
-public int reading;
+static lbool reading;
+static lbool opening;
 public lbool waiting_for_data;
 public int consecutive_nulls = 0;
 
 /* Milliseconds to wait for data before displaying "waiting for data" message. */
 static int waiting_for_data_delay = 4000;
 static jmp_buf read_label;
+static jmp_buf open_label;
 
 extern int sigs;
 extern int ignore_eoi;
@@ -81,6 +86,7 @@ extern int follow_mode;
 extern int scanning_eof;
 extern char intr_char;
 extern int is_tty;
+extern int no_poll;
 #if !MSDOS_COMPILER
 extern int tty;
 #endif
@@ -133,6 +139,7 @@ static int check_poll(int fd, int tty)
 				/* Break out of "waiting for data". */
 				return (READ_INTR);
 			ungetcc_back((char) ch);
+			return (READ_INTR);
 		}
 	}
 	if (ignore_eoi && exit_F_on_close && (poller[0].revents & (POLLHUP|POLLIN)) == POLLHUP)
@@ -152,7 +159,7 @@ public int supports_ctrl_x(void)
 	return (TRUE);
 #else
 #if USE_POLL
-	return (use_poll);
+	return (use_poll && !no_poll);
 #else
 	return (FALSE);
 #endif /* USE_POLL */
@@ -161,7 +168,7 @@ public int supports_ctrl_x(void)
 
 /*
  * Like read() system call, but is deliberately interruptible.
- * A call to intread() from a signal handler will interrupt
+ * A call to intio() from a signal handler will interrupt
  * any pending iread().
  */
 public ssize_t iread(int fd, unsigned char *buf, size_t len)
@@ -188,7 +195,7 @@ start:
 	if (!reading && SET_JUMP(read_label))
 	{
 		/*
-		 * We jumped here from intread.
+		 * We jumped here from intio.
 		 */
 		reading = FALSE;
 #if HAVE_SIGPROCMASK
@@ -238,7 +245,7 @@ start:
 	}
 #endif
 #if USE_POLL
-	if (is_tty && fd != tty && use_poll)
+	if (is_tty && fd != tty && use_poll && !no_poll)
 	{
 		int ret = check_poll(fd, tty);
 		if (ret != 0)
@@ -256,19 +263,17 @@ start:
 		int c;
 
 		c = WIN32getch();
-		if (c == intr_char)
-		{
-			sigs |= S_INTERRUPT;
-			reading = FALSE;
-			return (READ_INTR);
-		}
-		WIN32ungetch(c);
+		sigs |= S_INTERRUPT;
+		reading = FALSE;
+		if (c != CONTROL('C') && c != intr_char)
+			WIN32ungetch((char) c);
+		return (READ_INTR);
 	}
 #endif
 #endif
 	n = read(fd, buf, len);
 	reading = FALSE;
-#if 1
+#if 0
 	/*
 	 * This is a kludge to workaround a problem on some systems
 	 * where terminating a remote tty connection causes read() to
@@ -292,9 +297,6 @@ start:
 		/*
 		 * Certain values of errno indicate we should just retry the read.
 		 */
-#if MUST_DEFINE_ERRNO
-		extern int errno;
-#endif
 #ifdef EINTR
 		if (errno == EINTR)
 			goto start;
@@ -314,11 +316,41 @@ start:
 }
 
 /*
- * Interrupt a pending iread().
+ * Like open() system call, but is interruptible.
  */
-public void intread(void)
+public int iopen(constant char *filename, int flags)
 {
-	LONG_JUMP(read_label, 1);
+	int r;
+	if (!opening && SET_JUMP(open_label))
+	{
+		opening = FALSE;
+		sigs = 0;
+#if HAVE_SETTABLE_ERRNO
+#ifdef EINTR
+		errno = EINTR;
+#endif
+#endif
+		return -1;
+	}
+	opening = TRUE;
+	r = open(filename, flags);
+	opening = FALSE;
+	return r;
+}
+
+/*
+ * Interrupt a pending iopen() or iread().
+ */
+public void intio(void)
+{
+	if (opening)
+	{
+		LONG_JUMP(open_label, 1);
+	}
+	if (reading)
+	{
+		LONG_JUMP(read_label, 1);
+	}
 }
 
 /*
@@ -363,9 +395,6 @@ public char * errno_message(constant char *filename)
 	char *m;
 	size_t len;
 #if HAVE_ERRNO
-#if MUST_DEFINE_ERRNO
-	extern int errno;
-#endif
 	p = strerror(errno);
 #else
 	p = "cannot open";

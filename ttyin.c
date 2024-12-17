@@ -69,7 +69,11 @@ public int open_tty(void)
 	int fd = -1;
 #if LESSTEST
 	if (is_lesstest())
+	{
 		fd = open_tty_device(ttyin_name);
+		if (fd < 0)
+			fd = 0; /* assume lesstest uses stdin */
+	}
 #endif /*LESSTEST*/
 #if HAVE_TTYNAME
 	if (fd < 0)
@@ -193,8 +197,10 @@ public int getchr(void)
 		 * In raw read, we don't see ^C so look here for it.
 		 */
 #if MSDOS_COMPILER==WIN32C
+#if 0
 		if (ABORT_SIGS())
 			return (READ_INTR);
+#endif
 		c = WIN32getch();
 #else
 		c = getch();

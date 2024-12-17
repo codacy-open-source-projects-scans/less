@@ -37,7 +37,7 @@ public POSITION start_attnpos = NULL_POSITION;
 public POSITION end_attnpos = NULL_POSITION;
 public int      wscroll;
 public constant char *progname;
-public int      quitting;
+public lbool    quitting = FALSE;
 public int      dohelp;
 public char *   init_header = NULL;
 static int      secure_allow_features;
@@ -65,14 +65,14 @@ static wchar_t consoleTitle[256];
 
 public int      one_screen;
 extern int      less_is_more;
-extern int      missing_cap;
+extern lbool    missing_cap;
 extern int      know_dumb;
 extern int      quit_if_one_screen;
 extern int      no_init;
 extern int      errmsgs;
 extern int      redraw_on_quit;
 extern int      term_init_done;
-extern int      first_time;
+extern lbool    first_time;
 
 #if MSDOS_COMPILER==WIN32C && (defined(MINGW) || defined(_MSC_VER))
 /* malloc'ed 0-terminated utf8 of 0-terminated wide ws, or null on errors */
@@ -152,6 +152,7 @@ cleanup:
 }
 #endif
 
+#if !SECURE
 static int security_feature_error(constant char *type, size_t len, constant char *name)
 {
 	PARG parg;
@@ -200,6 +201,7 @@ static int security_feature(constant char *name, size_t len)
 		return security_feature_error("invalid", len, name);
 	return features[match].sf_value;
 }
+#endif /* !SECURE */
 
 /*
  * Set the secure_allow_features bitmask, which controls
@@ -297,7 +299,8 @@ int main(int argc, constant char *argv[])
 	 * If the name of the executable program is "more",
 	 * act like LESS_IS_MORE is set.
 	 */
-	if (strcmp(last_component(progname), "more") == 0)
+	if (strcmp(last_component(progname), "more") == 0 &&
+			isnullenv(lgetenv("LESS_IS_MORE")))
 		less_is_more = 1;
 
 	init_prompt();
@@ -333,7 +336,7 @@ int main(int argc, constant char *argv[])
 
 #if EDITOR
 	editor = lgetenv("VISUAL");
-	if (editor == NULL || *editor == '\0')
+	if (isnullenv(editor))
 	{
 		editor = lgetenv("EDITOR");
 		if (isnullenv(editor))
@@ -580,7 +583,7 @@ public void quit(int status)
 		status = save_status;
 	else
 		save_status = status;
-	quitting = 1;
+	quitting = TRUE;
 	check_altpipe_error();
 	if (interactive())
 		clear_bot();
@@ -593,7 +596,7 @@ public void quit(int status)
 		 * alternate screen, which now (since deinit) cannot be seen.
 		 * redraw_on_quit tells us to redraw it on the main screen.
 		 */
-		first_time = 1; /* Don't print "skipping" or tildes */
+		first_time = TRUE; /* Don't print "skipping" or tildes */
 		repaint();
 		flush();
 	}

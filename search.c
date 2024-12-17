@@ -292,7 +292,7 @@ public void repaint_hilite(lbool on)
 		(void) forw_line(pos);
 		goto_line(sindex);
 		clear_eol();
-		put_line();
+		put_line(FALSE);
 	}
 	overlay_header();
 	lower_left();
@@ -339,7 +339,7 @@ public void clear_attn(void)
 			(void) forw_line(pos);
 			goto_line(sindex);
 			clear_eol();
-			put_line();
+			put_line(FALSE);
 			moved = 1;
 		}
 	}
@@ -572,6 +572,7 @@ public POSITION next_unfiltered(POSITION pos)
 	if (pos_in_header(pos))
 		return (pos);
 
+	flush();
 	n = hlist_find(&filter_anchor, pos);
 	while (n != NULL && pos >= n->r.hl_startpos)
 	{
@@ -594,6 +595,7 @@ public POSITION prev_unfiltered(POSITION pos)
 	if (pos_in_header(pos))
 		return (pos);
 
+	flush();
 	n = hlist_find(&filter_anchor, pos);
 	while (n != NULL && pos >= n->r.hl_startpos)
 	{
@@ -1231,6 +1233,7 @@ static POSITION get_lastlinepos(POSITION pos, POSITION tpos, int sheight)
 {
 	int nlines;
 
+	flush();
 	for (nlines = 0;;  nlines++)
 	{
 		POSITION npos = forw_line(pos);
@@ -1264,12 +1267,14 @@ struct osc8_parse_info {
 static lbool osc8_parse(constant char *line, constant char *line_end, struct osc8_parse_info *pop)
 {
 	constant char *oline;
-	pop->osc8_start = pop->osc8_end = pop->uri_start = pop->uri_end = pop->params_start = pop->params_end = NULL;
+	LWCHAR ch;
+	struct ansi_state *pansi;
 
+	pop->osc8_start = pop->osc8_end = pop->uri_start = pop->uri_end = pop->params_start = pop->params_end = NULL;
 	oline = line;
-	LWCHAR ch = step_charc(&line, +1, line_end);
+	ch = step_charc(&line, +1, line_end);
 	/* oline points to character ch, line points to the one after it. */
-	struct ansi_state *pansi = ansi_start(ch);
+	pansi = ansi_start(ch);
 	if (pansi == NULL)
 		return FALSE;
 	pop->osc8_start = oline; /* start at the ESC */
@@ -1292,12 +1297,14 @@ static lbool osc8_parse(constant char *line, constant char *line_end, struct osc
 				pop->uri_start = line;
 			}
 			break;
-		case OSC8_ST_ESC:
+		case OSC_END_CSI:
 			if (pop->uri_end == NULL)
 				pop->uri_end = oline;
 			break;
-		case OSC8_END:
+		case OSC_END:
 			ansi_done(pansi);
+			if (pop->params_start == NULL || pop->uri_start == NULL)
+				return FALSE;
 			pop->osc8_end = line;
 			if (pop->uri_end == NULL) /* happens when ST is "\7" */
 				pop->uri_end = oline;
@@ -1524,6 +1531,7 @@ static int search_range(POSITION pos, POSITION endpos, int search_type, int matc
 	/* When the search wraps around, end at starting position. */
 	if ((search_type & SRCH_WRAP) && endpos == NULL_POSITION)
 		endpos = pos;
+	flush();
 	for (;;)
 	{
 		/*
@@ -1843,7 +1851,7 @@ public lbool osc8_click(int sindex, int col)
 /*
  * Return the length of the scheme prefix in a URI.
  */
-static int scheme_length(constant char *uri, size_t uri_len)
+static size_t scheme_length(constant char *uri, size_t uri_len)
 {
 	size_t plen;
 	for (plen = 0;  plen < uri_len;  plen++)
@@ -1930,7 +1938,7 @@ public void osc8_open(void)
 #if HAVE_POPEN
 	if (bad_uri(op.uri_start, uri_len))
 	{
-		error("Cannot open link containing dangerous characters", NULL_PARG);
+		error("Cannot open link containing quote characters", NULL_PARG);
 		return;
 	}
 	SNPRINTF3(env_name, sizeof(env_name), "%s%.*s", env_name_pfx, (int) scheme_len, op.uri_start);

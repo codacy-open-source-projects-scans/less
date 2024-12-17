@@ -48,7 +48,8 @@ Customizes line-editing key bindings.
 .IP #env
 Defines environment variables.
 .PP
-Blank lines and lines which start with a hash mark (#) are ignored,
+Blank lines are ignored.
+Any text that follows an unescaped hash mark (#) in a line is ignored,
 except as noted below.
 .
 .SH "COMMAND SECTION"
@@ -244,6 +245,8 @@ v	visual
 !	shell
 #	pshell
 +	firstcmd
+\ee[M	mouse
+\ee[<	mouse6
 H	help
 h	help
 V	version
@@ -339,6 +342,8 @@ l l.
 \eku	up
 \eej	down
 ^G	abort
+\ee[M	mouse
+\ee[<	mouse6
 .TE
 .RE
 .sp
@@ -477,4 +482,6 @@ See the GNU General Public License for more details.
 .
 Mark Nudelman
 .br
-Report bugs at https://github.com/gwsw/less/issues.
+Report bugs at 
+.UR https://github.com/gwsw/less/issues
+.UE .

@@ -49,7 +49,7 @@ extern int vt_enabled;
 /*
  * Display the line which is in the line buffer.
  */
-public void put_line(void)
+public void put_line(lbool forw_scroll)
 {
 	int c;
 	size_t i;
@@ -75,8 +75,10 @@ public void put_line(void)
 		else
 			putchr(c);
 	}
-
 	at_exit();
+
+	if (forw_scroll && should_clear_after_line())
+		clear_eol();
 }
 
 /*
@@ -250,11 +252,10 @@ static int is_ansi_end_0(char c)
 
 static void win_flush(void)
 {
-	if (ctldisp != OPT_ONPLUS
-#if MSDOS_COMPILER==WIN32C
-	    || (vt_enabled && sgr_mode)
+#if MSDOS_COMPILER != WIN32C
+	static constant int vt_enabled = 0;
 #endif
-	   )
+	if (ctldisp != OPT_ONPLUS || (vt_enabled && sgr_mode))
 		WIN32textout(obuf, ptr_diff(ob, obuf));
 	else
 	{

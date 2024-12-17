@@ -19,7 +19,8 @@
 public lbool squished;
 public int no_back_scroll = 0;
 public int forw_prompt;
-public int first_time = 1;
+public lbool first_time = TRUE; /* We're printing the first screen of output */
+public int shell_lines = 1;
 public lbool no_eof_bell = FALSE;
 
 extern int sigs;
@@ -35,6 +36,7 @@ extern int ignore_eoi;
 extern int header_lines;
 extern int header_cols;
 extern int full_screen;
+extern int stop_on_form_feed;
 extern POSITION header_start_pos;
 #if HILITE_SEARCH
 extern size_t size_linebuf;
@@ -53,11 +55,13 @@ public void eof_bell(void)
 	if (no_eof_bell)
 		return;
 #if HAVE_TIME
-	static time_type last_eof_bell = 0;
-	time_type now = get_time();
-	if (now == last_eof_bell) /* max once per second */
-		return;
-	last_eof_bell = now;
+	{
+		static time_type last_eof_bell = 0;
+		time_type now = get_time();
+		if (now == last_eof_bell) /* max once per second */
+			return;
+		last_eof_bell = now;
+	}
 #endif
 	if (quiet == NOT_QUIET)
 		bell();
@@ -68,7 +72,7 @@ public void eof_bell(void)
 /*
  * Check to see if the end of file is currently displayed.
  */
-public lbool eof_displayed(void)
+public lbool eof_displayed(lbool offset)
 {
 	POSITION pos;
 
@@ -87,7 +91,7 @@ public lbool eof_displayed(void)
 	 * If the bottom line ends at the file length,
 	 * we must be just at EOF.
 	 */
-	pos = position(BOTTOM_PLUS_ONE);
+	pos = position(offset ? BOTTOM_OFFSET : BOTTOM_PLUS_ONE);
 	return (pos == NULL_POSITION || pos == ch_length());
 }
 
@@ -99,7 +103,7 @@ public lbool entire_file_displayed(void)
 	POSITION pos;
 
 	/* Make sure last line of file is displayed. */
-	if (!eof_displayed())
+	if (!eof_displayed(TRUE))
 		return (FALSE);
 
 	/* Make sure first line of file is displayed. */
@@ -172,7 +176,7 @@ public int overlay_header(void)
 			pos = forw_line(pos);
 			set_attr_header(ln);
 			clear_eol();
-			put_line();
+			put_line(FALSE);
 		}
 		moved = TRUE;
 	}
@@ -192,7 +196,7 @@ public int overlay_header(void)
 				/* Need skipeol for all header lines except the last one. */
 				pos = forw_line_pfx(pos, header_cols, ln+1 < header_lines);
 				set_attr_header(ln);
-				put_line();
+				put_line(FALSE);
 			}
 		}
 		moved = TRUE;
@@ -345,7 +349,9 @@ public void forw(int n, POSITION pos, lbool force, lbool only_last, int nblank)
 			squished = TRUE;
 			continue;
 		}
-		put_line();
+		put_line(TRUE);
+		if (stop_on_form_feed && !do_repaint && line_is_ff() && position(TOP) != NULL_POSITION)
+			break;
 #if 0
 		/* {{ 
 		 * Can't call clear_eol here.  The cursor might be at end of line
@@ -378,7 +384,7 @@ public void forw(int n, POSITION pos, lbool force, lbool only_last, int nblank)
 		overlay_header();
 		/* lower_left(); {{ considered harmful? }} */
 	}
-	first_time = 0;
+	first_time = FALSE;
 	(void) currline(BOTTOM);
 }
 
@@ -431,7 +437,9 @@ public void back(int n, POSITION pos, lbool force, lbool only_last)
 		{
 			home();
 			add_line();
-			put_line();
+			put_line(FALSE);
+			if (stop_on_form_feed && line_is_ff())
+				break;
 		}
 	}
 	if (nlines == 0)
@@ -454,7 +462,7 @@ public void forward(int n, lbool force, lbool only_last)
 {
 	POSITION pos;
 
-	if (get_quit_at_eof() && eof_displayed() && !(ch_getflags() & CH_HELPFILE))
+	if (get_quit_at_eof() && eof_displayed(FALSE) && !(ch_getflags() & CH_HELPFILE))
 	{
 		/*
 		 * If the -e flag is set and we're trying to go
@@ -531,15 +539,16 @@ public int get_back_scroll(void)
 /*
  * Will the entire file fit on one screen?
  */
-public int get_one_screen(void)
+public lbool get_one_screen(void)
 {
 	int nlines;
 	POSITION pos = ch_zero();
 
-	for (nlines = 0;  nlines < sc_height;  nlines++)
+	for (nlines = 0;  nlines + shell_lines <= sc_height;  nlines++)
 	{
 		pos = forw_line(pos);
-		if (pos == NULL_POSITION) break;
+		if (pos == NULL_POSITION)
+			return TRUE;
 	}
-	return (nlines < sc_height);
+	return FALSE;
 }

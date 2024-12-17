@@ -1032,6 +1032,15 @@ v665  9/4/24    Fix ^Z bug.
 v666  9/21/24   Fix missing first byte from LESSOPEN if >0x7f.
 v667  9/26/24   Fix uninitialized variable in edit_ifile.
 v668  10/6/24   Fix UTF-8 chars in prompt.
+v669  11/6/24   Add --no-paste; add --no-edit-warn; add TAB for -- command;
+                add LESSANSIOSCALLOW and LESSANSIOSCCCHARS; fix bug searching 
+                near invalid UTF-8 sequence; add LESS_SHELL_LINES; fix bug 
+                with --no-number-headers; add mouse cmds to lesskey;
+                add form-feed; add --no-poll; add LESS_SIGUSR1;
+                fix "configure --with-secure=no".
+v670  11/16/24  Fix SIGWINCH handling; add iopen.
+v671  12/6/24   Fix multibyte command chars; fix Windows auto_wrap.
+v672
 */
 
-char version[] = "668";
+char version[] = "672x";

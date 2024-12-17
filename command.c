@@ -29,7 +29,7 @@ extern int sc_height;
 extern char *kent;
 extern int swindow;
 extern int jump_sline;
-extern int quitting;
+extern lbool quitting;
 extern int wscroll;
 extern int top_scroll;
 extern int ignore_eoi;
@@ -47,6 +47,9 @@ extern void *ml_examine;
 extern int wheel_lines;
 extern int def_search_type;
 extern lbool search_wrapped;
+extern int no_paste;
+extern lbool pasting;
+extern int no_edit_warn;
 #if SHELL_ESCAPE || PIPEC
 extern void *ml_shell;
 #endif
@@ -74,7 +77,7 @@ static int last_search_type;    /* Type of last executed search */
 static LINENUM number;          /* The number typed by the user */
 static long fraction;           /* The fractional part of the number */
 static struct loption *curropt;
-static int opt_lower;
+static lbool opt_lower;
 static int optflag;
 static lbool optgetname;
 static POSITION bottompos;
@@ -83,6 +86,10 @@ static int save_bs_mode;
 static int save_proc_backspace;
 static int screen_trashed_value = 0;
 static lbool literal_char = FALSE;
+static lbool ignoring_input = FALSE;
+#if HAVE_TIME
+static time_type ignoring_input_time;
+#endif
 #if PIPEC
 static char pipec;
 #endif
@@ -102,7 +109,7 @@ static void multi_search(constant char *pattern, int n, int silent);
  * This looks nicer if the command takes a long time before
  * updating the screen.
  */
-static void cmd_exec(void)
+public void cmd_exec(void)
 {
 	clear_attn();
 	clear_bot();
@@ -228,7 +235,7 @@ static void mca_opt_toggle(void)
 		break;
 	}
 	forw_prompt = 0;
-	set_mlist(NULL, 0);
+	set_mlist(NULL, CF_OPTION);
 }
 
 /*
@@ -237,7 +244,6 @@ static void mca_opt_toggle(void)
 static void exec_mca(void)
 {
 	constant char *cbuf;
-	char *p;
 
 	cmd_exec();
 	cbuf = get_cmdbuf();
@@ -280,7 +286,8 @@ static void exec_mca(void)
 		match_brac(cbuf[1], cbuf[0], 0, (int) number);
 		break;
 #if EXAMINE
-	case A_EXAMINE:
+	case A_EXAMINE: {
+		char *p;
 		if (!secure_allow(SF_EXAMINE))
 			break;
 		p = save(cbuf);
@@ -290,7 +297,7 @@ static void exec_mca(void)
 		/* If tag structure is loaded then clean it up. */
 		cleantags();
 #endif
-		break;
+		break; }
 #endif
 #if SHELL_ESCAPE
 	case A_SHELL: {
@@ -413,16 +420,18 @@ static int mca_opt_nonfirst_char(char c)
 	constant char *p;
 	constant char *oname;
 	lbool ambig;
+	struct loption *was_curropt;
 
 	if (curropt != NULL)
 	{
-		/*
-		 * Already have a match for the name.
-		 * Don't accept anything but erase/kill.
-		 */
+		/* Already have a match for the name. */
 		if (is_erase_char(c))
 			return (MCA_DONE);
-		return (MCA_MORE);
+		/* {{ Checking for TAB here is ugly.
+		 *    Also doesn't extend well -- can't do BACKTAB this way
+		 *    because it's a multichar sequence. }} */
+		if (c != '\t') 
+			return (MCA_MORE);
 	}
 	/*
 	 * Add char to cmd buffer and try to match
@@ -431,26 +440,23 @@ static int mca_opt_nonfirst_char(char c)
 	if (cmd_char(c) == CC_QUIT)
 		return (MCA_DONE);
 	p = get_cmdbuf();
-	if (p == NULL)
+	if (p == NULL || p[0] == '\0')
 		return (MCA_MORE);
 	opt_lower = ASCII_IS_LOWER(p[0]);
+	was_curropt = curropt;
 	curropt = findopt_name(&p, &oname, &ambig);
 	if (curropt != NULL)
 	{
-		/*
-		 * Got a match.
-		 * Remember the option and
-		 * display the full option name.
-		 */
-		cmd_reset();
-		mca_opt_toggle();
-		for (p = oname;  *p != '\0';  p++)
+		if (was_curropt == NULL)
 		{
-			c = *p;
-			if (!opt_lower && ASCII_IS_LOWER(c))
-				c = ASCII_TO_UPPER(c);
-			if (cmd_char(c) != CC_OK)
-				return (MCA_DONE);
+			/*
+			 * Got a match.
+			 * Remember the option and
+			 * display the full option name.
+			 */
+			cmd_reset();
+			mca_opt_toggle();
+			cmd_setstring(oname, !opt_lower);
 		}
 	} else if (!ambig)
 	{
@@ -471,7 +477,7 @@ static int mca_opt_char(char c)
 	 * or one char of a long option name,
 	 * or one char of the option parameter.
 	 */
-	if (curropt == NULL && len_cmdbuf() == 0)
+	if (curropt == NULL && cmdbuf_empty())
 	{
 		int ret = mca_opt_first_char(c);
 		if (ret != NO_MCA)
@@ -522,7 +528,7 @@ static int mca_opt_char(char c)
 	/*
 	 * Display a prompt appropriate for the option parameter.
 	 */
-	start_mca(A_OPT_TOGGLE, opt_prompt(curropt), NULL, 0);
+	start_mca(A_OPT_TOGGLE, opt_prompt(curropt), NULL, CF_OPTION);
 	return (MCA_MORE);
 }
 
@@ -551,7 +557,7 @@ static int mca_search_char(char c)
 	 *      *  Toggle the PAST_EOF flag
 	 *      @  Toggle the FIRST_FILE flag
 	 */
-	if (len_cmdbuf() > 0 || literal_char)
+	if (!cmdbuf_empty() || literal_char)
 	{
 		literal_char = FALSE;
 		return (NO_MCA);
@@ -688,9 +694,13 @@ static int mca_char(char c)
 	 */
 	if (is_newline_char(c))
 	{
-		/*
-		 * Execute the command.
-		 */
+		if (pasting && no_paste)
+		{
+			/* Ignore pasted input after (and including) the first newline */
+			start_ignoring_input();
+			return (MCA_MORE);
+		}
+		/* Execute the command. */
 		exec_mca();
 		return (MCA_DONE);
 	}
@@ -859,7 +869,7 @@ static void prompt(void)
 	 * If we've hit EOF on the last file and the -E flag is set, quit.
 	 */
 	if (get_quit_at_eof() == OPT_ONPLUS &&
-	    eof_displayed() && !(ch_getflags() & CH_HELPFILE) && 
+	    eof_displayed(FALSE) && !(ch_getflags() & CH_HELPFILE) && 
 	    next_ifile(curr_ifile) == NULL_IFILE)
 		quit(QUIT_OK);
 
@@ -941,7 +951,7 @@ static void prompt(void)
 		p = a;
 #endif
 		load_line(p);
-		put_line();
+		put_line(FALSE);
 	}
 	clear_eol();
 }
@@ -1015,14 +1025,14 @@ public void getcc_clear(void)
 static char getccu(void)
 {
 	int c = 0;
-	while (c == 0 && !ABORT_SIGS())
+	while (c == 0 && sigs == 0)
 	{
 		if (ungot == NULL)
 		{
 			/* Normal case: no ungotten chars.
 			 * Get char from the user. */
 			c = getchr();
-			if (c < 0) return ('\0');
+			if (c < 0) c = '\0';
 		} else
 		{
 			/* Ungotten chars available:
@@ -1286,6 +1296,46 @@ static int forw_loop(int until_hilite)
 }
 
 /*
+ * Ignore subsequent (pasted) input chars.
+ */
+public void start_ignoring_input()
+{
+	ignoring_input = TRUE;
+#if HAVE_TIME
+	ignoring_input_time = get_time();
+#endif
+}
+
+/*
+ * Stop ignoring input chars.
+ */
+public void stop_ignoring_input()
+{
+	ignoring_input = FALSE;
+	pasting = FALSE;
+}
+
+/*
+ * Are we ignoring input chars?
+ */
+public lbool is_ignoring_input(int action)
+{
+	if (!ignoring_input)
+		return FALSE;
+	if (action == A_END_PASTE)
+		stop_ignoring_input();
+#if HAVE_TIME
+	if (get_time() >= ignoring_input_time + MAX_PASTE_IGNORE_SEC)
+		stop_ignoring_input();
+#endif
+	/*
+	 * Don't ignore prefix chars so we can parse a full command
+	 * (which might be A_END_PASTE).
+	 */
+	return (action != A_PREFIX);
+}
+
+/*
  * Main command processor.
  * Accept and execute commands until a quit command.
  */
@@ -1302,7 +1352,9 @@ public void commands(void)
 	PARG parg;
 	IFILE old_ifile;
 	IFILE new_ifile;
+#if TAGS
 	constant char *tagfile;
+#endif
 
 	search_type = SRCH_FORW;
 	wscroll = (sc_height + 1) / 2;
@@ -1392,11 +1444,14 @@ public void commands(void)
 				 * If the user backspaces past the start 
 				 * of the line, abort the command.
 				 */
-				if (cmd_char(c) == CC_QUIT || len_cmdbuf() == 0)
+				if (cmd_char(c) == CC_QUIT || cmdbuf_empty())
 					continue;
 				cbuf = get_cmdbuf();
 				if (cbuf == NULL)
-					continue;
+				{
+					c = getcc();
+					goto again;
+				}
 				action = fcmd_decode(cbuf, &extra);
 			} else
 			{
@@ -1426,8 +1481,16 @@ public void commands(void)
 		if (action != A_PREFIX)
 			cmd_reset();
 
+		if (is_ignoring_input(action))
+			continue;
+
 		switch (action)
 		{
+		case A_START_PASTE:
+			if (no_paste)
+				start_ignoring_input();
+			break;
+
 		case A_DIGIT:
 			/*
 			 * First digit of a number.
@@ -1547,6 +1610,8 @@ public void commands(void)
 			/*
 			 * Forward forever, ignoring EOF.
 			 */
+			if (get_altfilename(curr_ifile) != NULL)
+				error("Warning: command may not work correctly when file is viewed via LESSOPEN", NULL_PARG);
 			if (show_attn)
 				set_attnpos(bottompos);
 			newaction = forw_loop(0);
@@ -1884,10 +1949,9 @@ public void commands(void)
 					error("Cannot edit standard input", NULL_PARG);
 					break;
 				}
-				if (get_altfilename(curr_ifile) != NULL)
+				if (!no_edit_warn && get_altfilename(curr_ifile) != NULL)
 				{
-					error("WARNING: This file was viewed via LESSOPEN",
-						NULL_PARG);
+					error("WARNING: This file was viewed via LESSOPEN", NULL_PARG);
 				}
 				start_mca(A_SHELL, "!", ml_shell, 0);
 				/*
@@ -1918,9 +1982,10 @@ public void commands(void)
 #endif
 			if (number <= 0)
 				number = 1;
+			cmd_exec();
 			if (edit_next((int) number))
 			{
-				if (get_quit_at_eof() && eof_displayed() && 
+				if (get_quit_at_eof() && eof_displayed(FALSE) && 
 				    !(ch_getflags() & CH_HELPFILE))
 					quit(QUIT_OK);
 				parg.p_string = (number > 1) ? "(N-th) " : "";
@@ -1941,6 +2006,7 @@ public void commands(void)
 #endif
 			if (number <= 0)
 				number = 1;
+			cmd_exec();
 			if (edit_prev((int) number))
 			{
 				parg.p_string = (number > 1) ? "(N-th) " : "";
@@ -2004,6 +2070,7 @@ public void commands(void)
 			 */
 			if (number <= 0)
 				number = 1;
+			cmd_exec();
 			if (edit_index((int) number))
 				error("No such file", NULL_PARG);
 			break;
@@ -2016,6 +2083,7 @@ public void commands(void)
 				break;
 			old_ifile = curr_ifile;
 			new_ifile = getoff_ifile(curr_ifile);
+			cmd_exec();
 			if (new_ifile == NULL_IFILE)
 			{
 				bell();
@@ -2085,7 +2153,18 @@ public void commands(void)
 			 * Set a mark.
 			 */
 			if (ch_getflags() & CH_HELPFILE)
+			{
+				if (ungot != NULL)
+				{
+					/*
+					 * Probably from a lesskey file, in which case there 
+					 * is probably an ungotten letter from the "extra" string.
+					 * Eat it so it is not interpreted as a command.
+					 */
+					(void) getcc();
+				}
 				break;
+			}
 			start_mca(A_SETMARK, "set mark: ", NULL, 0);
 			c = getcc();
 			if (is_erase_char(c) || is_newline_char(c))
