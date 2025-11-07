@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1984-2024  Mark Nudelman
+ * Copyright (C) 1984-2025  Mark Nudelman
  *
  * You may distribute under the terms of either the GNU General Public
  * License or the Less License, as specified in the README file.
@@ -43,7 +43,7 @@ extern int errno;
 #include <sys/utsname.h>
 #endif
 
-#if HAVE_POLL && !MSDOS_COMPILER
+#if HAVE_POLL && !MSDOS_COMPILER && !defined(__MVS__)
 #define USE_POLL 1
 static lbool use_poll = TRUE;
 #else
@@ -61,23 +61,36 @@ static lbool any_data = FALSE;
  * On other systems, setjmp() doesn't affect the signal mask and so
  * _setjmp() does not exist; we just use setjmp().
  */
-#if HAVE__SETJMP && HAVE_SIGSETMASK
-#define SET_JUMP        _setjmp
-#define LONG_JUMP       _longjmp
+#if HAVE_SIGSETJMP
+#define SET_JUMP(label)        sigsetjmp(label, 1)
+#define LONG_JUMP(label, val)  siglongjmp(label, val)
+#define JUMP_BUF               sigjmp_buf
 #else
-#define SET_JUMP        setjmp
-#define LONG_JUMP       longjmp
+#if HAVE__SETJMP && HAVE_SIGSETMASK
+#define SET_JUMP(label)        _setjmp(label)
+#define LONG_JUMP(label, val)  _longjmp(label, val)
+#define JUMP_BUF               jmp_buf
+#else
+#define SET_JUMP(label)        setjmp(label)
+#define LONG_JUMP(label, val)  longjmp(label, val)
+#define JUMP_BUF               jmp_buf
+#endif
 #endif
 
 static lbool reading;
 static lbool opening;
 public lbool waiting_for_data;
 public int consecutive_nulls = 0;
+public lbool getting_one_screen = FALSE;
+public lbool no_poll = FALSE;
 
 /* Milliseconds to wait for data before displaying "waiting for data" message. */
 static int waiting_for_data_delay = 4000;
-static jmp_buf read_label;
-static jmp_buf open_label;
+/* Max milliseconds expected to "normally" read and display a screen of text. */
+public int screenfill_ms = 3000;
+
+static JUMP_BUF read_label;
+static JUMP_BUF open_label;
 
 extern int sigs;
 extern int ignore_eoi;
@@ -86,7 +99,11 @@ extern int follow_mode;
 extern int scanning_eof;
 extern char intr_char;
 extern int is_tty;
-extern int no_poll;
+extern int quit_if_one_screen;
+extern int one_screen;
+#if HAVE_TIME
+extern time_type less_start_time;
+#endif
 #if !MSDOS_COMPILER
 extern int tty;
 #endif
@@ -97,6 +114,10 @@ public void init_poll(void)
 	int idelay = (delay == NULL) ? 0 : atoi(delay);
 	if (idelay > 0)
 		waiting_for_data_delay = idelay;
+	delay = lgetenv("LESS_SCREENFILL_TIME");
+	idelay = (delay == NULL) ? 0 : atoi(delay);
+	if (idelay > 0)
+		screenfill_ms = idelay;
 #if USE_POLL
 #if defined(__APPLE__)
 	/* In old versions of MacOS, poll() does not work with /dev/tty. */
@@ -117,7 +138,11 @@ public void init_poll(void)
 static int check_poll(int fd, int tty)
 {
 	struct pollfd poller[2] = { { fd, POLLIN, 0 }, { tty, POLLIN, 0 } };
-	int timeout = (waiting_for_data && !(scanning_eof && follow_mode == FOLLOW_NAME)) ? -1 : waiting_for_data_delay;
+	int timeout = (waiting_for_data && !(scanning_eof && follow_mode == FOLLOW_NAME)) ? -1 : (ignore_eoi && !waiting_for_data) ? 0 : waiting_for_data_delay;
+#if HAVE_TIME
+	if (getting_one_screen && get_time() < less_start_time + screenfill_ms/1000)
+		return (0);
+#endif
 	if (!any_data)
 	{
 		/*
@@ -139,7 +164,8 @@ static int check_poll(int fd, int tty)
 				/* Break out of "waiting for data". */
 				return (READ_INTR);
 			ungetcc_back((char) ch);
-			return (READ_INTR);
+			if (!no_poll)
+				return (READ_INTR);
 		}
 	}
 	if (ignore_eoi && exit_F_on_close && (poller[0].revents & (POLLHUP|POLLIN)) == POLLHUP)
@@ -153,13 +179,43 @@ static int check_poll(int fd, int tty)
 }
 #endif /* USE_POLL */
 
+/*
+ * Is a character available to be read from the tty?
+ */
+public lbool ttyin_ready(void)
+{
+#if MSDOS_COMPILER==WIN32C
+	return win32_kbhit();
+#else
+#if MSDOS_COMPILER
+	return kbhit();
+#else
+#if USE_POLL
+#if LESSTEST
+	if (is_lesstest())
+		return FALSE;
+#endif /*LESSTEST*/
+	if (!use_poll)
+		return FALSE;
+	{
+		struct pollfd poller[1] = { { tty, POLLIN, 0 } };
+		poll(poller, 1, 0);
+		return ((poller[0].revents & POLLIN) != 0);
+	}
+#else
+	return FALSE;
+#endif
+#endif
+#endif
+}
+
 public int supports_ctrl_x(void)
 {
 #if MSDOS_COMPILER==WIN32C
 	return (TRUE);
 #else
 #if USE_POLL
-	return (use_poll && !no_poll);
+	return (use_poll);
 #else
 	return (FALSE);
 #endif /* USE_POLL */
@@ -245,29 +301,34 @@ start:
 	}
 #endif
 #if USE_POLL
-	if (is_tty && fd != tty && use_poll && !no_poll)
+	if (is_tty && fd != tty && use_poll && !(quit_if_one_screen && one_screen))
 	{
 		int ret = check_poll(fd, tty);
 		if (ret != 0)
 		{
 			if (ret == READ_INTR)
-				sigs |= S_INTERRUPT;
+				sigs |= S_SWINTERRUPT;
 			reading = FALSE;
 			return (ret);
 		}
 	}
 #else
 #if MSDOS_COMPILER==WIN32C
-	if (win32_kbhit())
+	if (!(quit_if_one_screen && one_screen) && win32_kbhit2(TRUE))
 	{
 		int c;
+		lbool intr;
 
 		c = WIN32getch();
-		sigs |= S_INTERRUPT;
-		reading = FALSE;
-		if (c != CONTROL('C') && c != intr_char)
+		intr = (c == CONTROL('C') || c == intr_char);
+		if (!intr)
 			WIN32ungetch((char) c);
-		return (READ_INTR);
+		if (intr || !no_poll)
+		{
+			sigs |= S_SWINTERRUPT;
+			reading = FALSE;
+			return (READ_INTR);
+		}
 	}
 #endif
 #endif
@@ -321,16 +382,20 @@ start:
 public int iopen(constant char *filename, int flags)
 {
 	int r;
-	if (!opening && SET_JUMP(open_label))
+	while (!opening && SET_JUMP(open_label))
 	{
 		opening = FALSE;
-		sigs = 0;
+		if (sigs & (S_INTERRUPT|S_SWINTERRUPT))
+		{
+			sigs = 0;
 #if HAVE_SETTABLE_ERRNO
 #ifdef EINTR
-		errno = EINTR;
+			errno = EINTR;
 #endif
 #endif
-		return -1;
+			return -1;
+		}
+		psignals(); /* Handle S_STOP or S_WINCH */
 	}
 	opening = TRUE;
 	r = open(filename, flags);

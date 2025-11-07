@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1984-2024  Mark Nudelman
+ * Copyright (C) 1984-2025  Mark Nudelman
  *
  * You may distribute under the terms of either the GNU General Public
  * License or the Less License, as specified in the README file.
@@ -88,6 +88,9 @@ static unsigned char cmdtable[] =
 	'z',0,                          A_F_WINDOW,
 	'w',0,                          A_B_WINDOW,
 	ESC,' ',0,                      A_FF_SCREEN,
+	ESC,'b',0,                      A_BF_SCREEN,
+	ESC,'j',0,                      A_F_NEWLINE,
+	ESC,'k',0,                      A_B_NEWLINE,
 	'F',0,                          A_F_FOREVER,
 	ESC,'F',0,                      A_F_UNTIL_HILITE,
 	'R',0,                          A_FREPAINT,
@@ -97,7 +100,12 @@ static unsigned char cmdtable[] =
 	ESC,'u',0,                      A_UNDO_SEARCH,
 	ESC,'U',0,                      A_CLR_SEARCH,
 	'g',0,                          A_GOLINE,
-	SK(SK_HOME),0,                  A_GOLINE,
+	SK(SK_HOME),0,                  A_LLSHIFT,
+	SK(SK_SHIFT_HOME),0,            A_GOLINE|A_EXTRA,           ESC,'{',0,
+	SK(SK_CTL_HOME),0,              A_GOLINE|A_EXTRA,           ESC,'{',0,
+	SK(SK_END),0,                   A_RRSHIFT,
+	SK(SK_SHIFT_END),0,             A_GOEND|A_EXTRA,            ESC,'}',0,
+	SK(SK_CTL_END),0,               A_GOEND|A_EXTRA,            ESC,'}',0,
 	'<',0,                          A_GOLINE,
 	ESC,'<',0,                      A_GOLINE,
 	'p',0,                          A_PERCENT,
@@ -122,7 +130,6 @@ static unsigned char cmdtable[] =
 	ESC,'G',0,                      A_GOEND_BUF,
 	ESC,'>',0,                      A_GOEND,
 	'>',0,                          A_GOEND,
-	SK(SK_END),0,                   A_GOEND,
 	'P',0,                          A_GOPOS,
 
 	'0',0,                          A_DIGIT,
@@ -180,6 +187,24 @@ static unsigned char cmdtable[] =
 	'!',0,                          A_SHELL,
 	'#',0,                          A_PSHELL,
 	'+',0,                          A_FIRSTCMD,
+
+	SK(SK_PAD_U),0,                 A_B_LINE,
+	SK(SK_PAD_D),0,                 A_F_LINE,
+	SK(SK_PAD_R),0,                 A_RSHIFT,
+	SK(SK_PAD_L),0,                 A_LSHIFT,
+	SK(SK_PAD_UR),0,                A_B_SCREEN,
+	SK(SK_PAD_UL),0,                A_LLSHIFT,
+	SK(SK_PAD_DR),0,                A_RRSHIFT,
+	SK(SK_PAD_DL),0,                A_GOEND,
+	SK(SK_PAD_STAR),0,              A_NOACTION|A_EXTRA,   '*',0,
+	SK(SK_PAD_SLASH),0,             A_NOACTION|A_EXTRA,   '/',0,
+	SK(SK_PAD_DASH),0,              A_NOACTION|A_EXTRA,   '-',0,
+	SK(SK_PAD_PLUS),0,              A_NOACTION|A_EXTRA,   '+',0,
+	SK(SK_PAD_DOT),0,               A_NOACTION|A_EXTRA,   '.',0,
+	SK(SK_PAD_COMMA),0,             A_NOACTION,
+	SK(SK_PAD_ZERO),0,              A_NOACTION|A_EXTRA,   '0',0,
+	SK(SK_PAD_CENTER),0,            A_NOACTION,
+
 	ESC,'[','2','0','0','~',0,      A_START_PASTE,
 	ESC,'[','2','0','1','~',0,      A_END_PASTE,
 
@@ -224,13 +249,33 @@ static unsigned char edittable[] =
 	ESC,SK(SK_BACKSPACE),0,         EC_W_BACKSPACE, /* ESC BACKSPACE */
 	ESC,'0',0,                      EC_HOME,        /* ESC 0 */
 	SK(SK_HOME),0,                  EC_HOME,        /* HOME */
+	SK(SK_SHIFT_HOME),0,            EC_HOME,        /* SHIFT-HOME */
+	SK(SK_CTL_HOME),0,              EC_HOME,        /* CTRL-HOME */
 	ESC,'$',0,                      EC_END,         /* ESC $ */
 	SK(SK_END),0,                   EC_END,         /* END */
+	SK(SK_SHIFT_END),0,             EC_END,         /* SHIFT-END */
+	SK(SK_CTL_END),0,               EC_END,         /* CTRL-END */
 	ESC,'k',0,                      EC_UP,          /* ESC k */
 	SK(SK_UP_ARROW),0,              EC_UP,          /* UPARROW */
 	ESC,'j',0,                      EC_DOWN,        /* ESC j */
 	SK(SK_DOWN_ARROW),0,            EC_DOWN,        /* DOWNARROW */
 	CONTROL('G'),0,                 EC_ABORT,       /* CTRL-G */
+	SK(SK_PAD_U),0,                 EC_UP,
+	SK(SK_PAD_D),0,                 EC_DOWN,
+	SK(SK_PAD_R),0,                 EC_RIGHT,
+	SK(SK_PAD_L),0,                 EC_LEFT,
+	SK(SK_PAD_UR),0,                A_NOACTION,
+	SK(SK_PAD_UL),0,                EC_HOME,
+	SK(SK_PAD_DR),0,                A_NOACTION,
+	SK(SK_PAD_DL),0,                EC_END,
+	SK(SK_PAD_STAR),0,              A_NOACTION|A_EXTRA,   '*',0,
+	SK(SK_PAD_SLASH),0,             A_NOACTION|A_EXTRA,   '/',0,
+	SK(SK_PAD_DASH),0,              A_NOACTION|A_EXTRA,   '-',0,
+	SK(SK_PAD_PLUS),0,              A_NOACTION|A_EXTRA,   '+',0,
+	SK(SK_PAD_DOT),0,               A_NOACTION|A_EXTRA,   '.',0,
+	SK(SK_PAD_COMMA),0,             A_NOACTION|A_EXTRA,   ',',0,
+	SK(SK_PAD_ZERO),0,              A_NOACTION|A_EXTRA,   '0',0,
+	SK(SK_PAD_CENTER),0,            A_NOACTION,
 	ESC,'[','M',0,                  EC_X11MOUSE,    /* X11 mouse report */
 	ESC,'[','<',0,                  EC_X116MOUSE,   /* X11 1006 mouse report */
 	ESC,'[','2','0','0','~',0,      A_START_PASTE,  /* open paste bracket */
@@ -480,12 +525,12 @@ public void add_ecmd_table(unsigned char *buf, size_t len)
 /*
  * Add an environment variable table.
  */
-static void add_var_table(struct tablelist **tlist, unsigned char *buf, size_t len)
+static void add_var_table(struct tablelist **tlist, mutable unsigned char *buf, size_t len)
 {
 	struct xbuffer xbuf;
 
 	xbuf_init(&xbuf);
-	expand_evars((char*)buf, len, &xbuf); /*{{unsigned-issue}}*/
+	expand_evars((mutable char*)buf, len, &xbuf); /*{{unsigned-issue}}*/
 	/* {{ We leak the table in buf. expand_evars scribbled in it so it's useless anyway. }} */
 	if (add_cmd_table(tlist, xbuf.data, xbuf.end) < 0)
 		error("Warning: environment variables from lesskey file unavailable", NULL_PARG);
@@ -535,19 +580,22 @@ static int mouse_button_left(int x, int y, lbool down, lbool drag)
 		if (y > last_drag_y)
 		{
 			cmd_exec();
-			backward(y - last_drag_y, FALSE, FALSE);
+			backward(y - last_drag_y, FALSE, FALSE, FALSE);
 			last_drag_y = y;
 		} else if (y < last_drag_y)
 		{
 			cmd_exec();
-			forward(last_drag_y - y, FALSE, FALSE);
+			forward(last_drag_y - y, FALSE, FALSE, FALSE);
 			last_drag_y = y;
 		}
 	} else if (!down)
 	{
 #if OSC8_LINK
-		if (osc8_click(y, x))
-			return (A_NOACTION);
+		if (secure_allow(SF_OSC8_OPEN))
+		{
+			if (osc8_click(y, x))
+				return (A_NOACTION);
+		}
 #else
 		(void) x;
 #endif /* OSC8_LINK */
@@ -746,8 +794,9 @@ static int cmd_search(constant char *cmd, constant unsigned char *table, constan
 			if (match == cmdlen) /* (last chars of) cmd matches this table entry */
 			{
 				action = taction;
-				*extra = textra;
-			} else if (match > 0) /* cmd is a prefix of this table entry */
+				if (extra != NULL)
+					*extra = textra;
+			} else if (match > 0 && action == A_INVALID) /* cmd is a prefix of this table entry */
 			{
 				action = A_PREFIX;
 			}
@@ -777,13 +826,11 @@ static int cmd_decode(struct tablelist *tlist, constant char *cmd, constant char
 	for (t = tlist;  t != NULL;  t = t->t_next)
 	{
 		constant unsigned char *tsp;
-		size_t mlen;
+		size_t mlen = match_len;
 		int taction = cmd_search(cmd, t->t_start, t->t_end, &tsp, &mlen);
 		if (mlen >= match_len)
 		{
 			match_len = mlen;
-			if (taction == A_UINVALID)
-				taction = A_INVALID;
 			if (taction != A_INVALID)
 			{
 				*sp = (constant char *) tsp;

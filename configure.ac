@@ -1,6 +1,6 @@
 # Process this file with autoconf to produce a configure script.
 
-# Copyright (C) 1984-2024  Mark Nudelman
+# Copyright (C) 1984-2025  Mark Nudelman
 #
 # You may distribute under the terms of either the GNU General Public
 # License or the Less License, as specified in the README file.
@@ -181,6 +181,12 @@ fi
 AC_MSG_RESULT(using $TERMLIBS)
 LIBS="$LIBS $TERMLIBS"
 
+# Check for terminfo vs termcap.
+AC_MSG_CHECKING(for terminfo)
+AC_LINK_IFELSE([AC_LANG_PROGRAM([[
+#include <curses.h>
+#include <term.h>]], [[setupterm("",0,0); tigetflag(""); tigetnum(""); tigetstr("")]])],[AC_MSG_RESULT(yes); AC_DEFINE(HAVE_TERMINFO)],[AC_MSG_RESULT(no)])
+
 # Autoheader templates for symbols defined later by AC_DEFINE.
 AH_TEMPLATE([HAVE_GNU_REGEX],
 	[GNU regex library])
@@ -236,6 +242,10 @@ AH_TEMPLATE([HAVE_SIGSET_T],
 	[Define HAVE_SIGSET_T you have the sigset_t type.])
 AH_TEMPLATE([HAVE_SIGEMPTYSET],
 	[Define HAVE_SIGEMPTYSET if you have the sigemptyset macro.])
+AH_TEMPLATE([HAVE_SIGSETJMP],
+	[Define HAVE_SIGSETJMP if you have sigsetjmp and siglongjmp.])
+AH_TEMPLATE([HAVE_TERMINFO],
+	[Define HAVE_TERMINFO if you have the terminfo library.])
 AH_TEMPLATE([EDIT_PGM],
 	[Define EDIT_PGM to your editor.])
 AH_TEMPLATE([SECURE_COMPILE],
@@ -258,6 +268,7 @@ AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[int f(int a) { return a; }]])],[AC_MS
 
 # Checks for library functions.
 AC_CHECK_FUNCS([fchmod fsync nanosleep poll popen realpath _setjmp sigprocmask sigsetmask snprintf stat strsignal system ttyname usleep])
+AC_CHECK_DECL(sigsetjmp, [AC_DEFINE(HAVE_SIGSETJMP)], [], [#include <setjmp.h>])
 
 # AC_CHECK_FUNCS may not work for inline functions, so test these separately.
 AC_MSG_CHECKING(for memcpy)
@@ -601,9 +612,18 @@ AH_TOP([
 #define	LESSKEYINFILE_SYS	SYSDIR "/syslesskey"
 #define LESSHISTFILE		".lesshst"
 
+/* Autodetect mingw */
+#if defined(__MINGW32__)
+/*
+ * Define MSDOS_COMPILER if compiling under Microsoft C.
+ */
+#define	MSDOS_COMPILER	WIN32C
 
-/* Settings always true on Unix.  */
-
+/*
+ * Pathname separator character.
+ */
+#define	PATHNAME_SEP	"\\"
+#else
 /*
  * Define MSDOS_COMPILER if compiling under Microsoft C.
  */
@@ -613,6 +633,9 @@ AH_TOP([
  * Pathname separator character.
  */
 #define	PATHNAME_SEP	"/"
+#endif
+
+/* Settings always true on Unix.  */
 
 /*
  * The value returned from tgetent on success.
@@ -687,6 +710,7 @@ AH_TOP([
 #define	TERMSBUF_SIZE	1024	/* Buffer to hold termcap strings */
 #define	TAGLINE_SIZE	512	/* Max size of line in tags file */
 #define	TABSTOP_MAX	32	/* Max number of custom tab stops */
+#define LINENUM_POOL    200     /* Size of line number pool */
 #else /* more reasonable sizes for modern machines */
 #define	CMDBUF_SIZE	2048	/* Buffer for multichar commands */
 #define	UNGOT_SIZE	200	/* Max chars to unget() */
@@ -697,6 +721,7 @@ AH_TOP([
 #define	TERMSBUF_SIZE	1024	/* Buffer to hold termcap strings */
 #define	TAGLINE_SIZE	1024	/* Max size of line in tags file */
 #define	TABSTOP_MAX	128	/* Max number of custom tab stops */
+#define LINENUM_POOL    1024    /* Size of line number pool */
 #endif
 
 /* Define as the return type of signal handlers (int or void).  */

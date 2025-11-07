@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1984-2024  Mark Nudelman
+ * Copyright (C) 1984-2025  Mark Nudelman
  *
  * You may distribute under the terms of either the GNU General Public
  * License or the Less License, as specified in the README file.
@@ -34,7 +34,9 @@ static constant struct lesskey_cmdname cmdnames[] =
 	{ "back-bracket",         A_B_BRACKET },
 	{ "back-line",            A_B_LINE },
 	{ "back-line-force",      A_BF_LINE },
+	{ "back-newline",         A_B_NEWLINE },
 	{ "back-screen",          A_B_SCREEN },
+	{ "back-screen-force",    A_BF_SCREEN },
 	{ "back-scroll",          A_B_SCROLL },
 	{ "back-search",          A_B_SEARCH },
 	{ "back-window",          A_B_WINDOW },
@@ -55,6 +57,7 @@ static constant struct lesskey_cmdname cmdnames[] =
 	{ "forw-forever",         A_F_FOREVER },
 	{ "forw-line",            A_F_LINE },
 	{ "forw-line-force",      A_FF_LINE },
+	{ "forw-newline",         A_F_NEWLINE },
 	{ "forw-screen",          A_F_SCREEN },
 	{ "forw-screen-force",    A_FF_SCREEN },
 	{ "forw-scroll",          A_F_SCROLL },
@@ -244,6 +247,7 @@ static constant char * tstr(char **pp, int xlate)
 		case 'k':
 			if (xlate)
 			{
+				ch = 0;
 				switch (*++p)
 				{
 				case 'b': ch = SK_BACKSPACE; break;
@@ -263,7 +267,30 @@ static constant char * tstr(char **pp, int xlate)
 				case 'x': ch = SK_DELETE; break;
 				case 'X': ch = SK_CTL_DELETE; break;
 				case '1': ch = SK_F1; break;
-				default:
+				case 'p':
+					switch (*++p)
+					{
+						case '1': ch = SK_PAD_DL; break;
+						case '2': ch = SK_PAD_D; break;
+						case '3': ch = SK_PAD_DR; break;
+						case '4': ch = SK_PAD_L; break;
+						case '5': ch = SK_PAD_CENTER; break;
+						case '6': ch = SK_PAD_R; break;
+						case '7': ch = SK_PAD_UL; break;
+						case '8': ch = SK_PAD_U; break;
+						case '9': ch = SK_PAD_UR; break;
+						case '0': ch = SK_PAD_ZERO; break;
+						case '*': ch = SK_PAD_STAR; break;
+						case '/': ch = SK_PAD_SLASH; break;
+						case '-': ch = SK_PAD_DASH; break;
+						case '+': ch = SK_PAD_PLUS; break;
+						case '.': ch = SK_PAD_DOT; break;
+						case ',': ch = SK_PAD_COMMA; break;
+					}
+					break;
+				}
+				if (ch == 0)
+				{
 					parse_error("invalid escape sequence \"\\k%s\"", char_string(buf, *p, 0));
 					*pp = increment_pointer(p);
 					return ("");

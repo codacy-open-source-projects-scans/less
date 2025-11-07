@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1984-2024  Mark Nudelman
+ * Copyright (C) 1984-2025  Mark Nudelman
  *
  * You may distribute under the terms of either the GNU General Public
  * License or the Less License, as specified in the README file.
@@ -40,6 +40,7 @@ public int ctldisp;             /* Send control chars to screen untranslated */
 public int force_open;          /* Open the file even if not regular file */
 public int swindow;             /* Size of scrolling window */
 public int jump_sline;          /* Screen line of "jump target" */
+public int jump_sline_arg;
 public long jump_sline_fraction = -1;
 public int shift_count;         /* Number of positions to shift horizontally */
 public long shift_count_fraction = -1;
@@ -84,9 +85,9 @@ public int match_shift;         /* Extra horizontal shift on search match */
 public int no_paste;            /* Don't accept pasted input */
 public int no_edit_warn;        /* Don't warn when editing a LESSOPENed file */
 public int stop_on_form_feed;   /* Stop scrolling on a line starting with form feed */
-public int no_poll;             /* Don't poll tty for ^X */
 public long match_shift_fraction = NUM_FRAC_DENOM/2; /* 1/2 of screen width */
 public char intr_char = CONTROL('X'); /* Char to interrupt reads */
+public char *first_cmd_at_prompt = NULL; /* Command to exec before first prompt */
 #if HILITE_SEARCH
 public int hilite_search;       /* Highlight matched search patterns? */
 #endif
@@ -185,7 +186,7 @@ static struct optname proc_backspace_optname = { "proc-backspace", NULL };
 static struct optname proc_tab_optname = { "proc-tab", NULL };
 static struct optname proc_return_optname = { "proc-return", NULL };
 static struct optname match_shift_optname = { "match-shift", NULL };
-static struct optname no_poll_optname = { "no-poll", NULL };
+static struct optname first_cmd_at_prompt_optname = { "cmd", NULL };
 #if LESSTEST
 static struct optname ttyin_name_optname = { "tty",              NULL };
 #endif /*LESSTEST*/
@@ -750,19 +751,15 @@ static struct loption option[] =
 			"Print carriage return as ^M"
 		}
 	},
+	{ OLETTER_NONE, &first_cmd_at_prompt_optname,
+		O_STRING|O_NO_TOGGLE|O_NO_QUERY, 0, NULL, opt_first_cmd_at_prompt,
+		{ NULL, NULL, NULL }
+	},
 	{ OLETTER_NONE, &match_shift_optname,
 		O_STRING|O_INIT_HANDLER, 0, NULL, opt_match_shift,
 		{
 			"Search match shift: ",
 			".d",
-			NULL
-		}
-	},
-	{ OLETTER_NONE, &no_poll_optname,
-		O_BOOL, OPT_OFF, &no_poll, NULL,
-		{
-			"Poll for ^X when reading data",
-			"Don't poll for ^X when reading data",
 			NULL
 		}
 	},

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1984-2024  Mark Nudelman
+ * Copyright (C) 1984-2025  Mark Nudelman
  *
  * You may distribute under the terms of either the GNU General Public
  * License or the Less License, as specified in the README file.
@@ -19,7 +19,7 @@
 
 #if MSDOS_COMPILER
 #include <dos.h>
-#if MSDOS_COMPILER==WIN32C && defined(MINGW)
+#if MSDOS_COMPILER==WIN32C && defined(__MINGW32__)
 #include <direct.h>
 #define setdisk(n) _chdrive((n)+1)
 #else
@@ -135,9 +135,10 @@ public void lsystem(constant char *cmd, constant char *donemsg)
 			char *esccmd = shell_quote(cmd);
 			if (esccmd != NULL)
 			{
-				size_t len = strlen(shell) + strlen(esccmd) + 5;
+				constant char *copt = shell_coption();
+				size_t len = strlen(shell) + strlen(esccmd) + strlen(copt) + 3;
 				p = (char *) ecalloc(len, sizeof(char));
-				SNPRINTF3(p, len, "%s %s %s", shell, shell_coption(), esccmd);
+				SNPRINTF3(p, len, "%s %s %s", shell, copt, esccmd);
 				free(esccmd);
 			}
 		}
@@ -227,7 +228,7 @@ public void lsystem(constant char *cmd, constant char *donemsg)
 	 * Warning: this leaves a signal pending (in "sigs"),
 	 * so psignals() should be called soon after lsystem().
 	 */
-	winch(0);
+	lwinch(0);
 #endif
 }
 
@@ -355,7 +356,7 @@ public int pipe_data(constant char *cmd, POSITION spos, POSITION epos)
 	screen_trashed();
 #if defined(SIGWINCH) || defined(SIGWIND)
 	/* {{ Probably don't need this here. }} */
-	winch(0);
+	lwinch(0);
 #endif
 	return (0);
 }

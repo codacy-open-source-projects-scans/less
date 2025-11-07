@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1984-2024  Mark Nudelman
+ * Copyright (C) 1984-2025  Mark Nudelman
  *
  * You may distribute under the terms of either the GNU General Public
  * License or the Less License, as specified in the README file.
@@ -283,11 +283,7 @@ static int ch_get(void)
 
 		read_again = FALSE;
 		if (n == READ_INTR)
-		{
-			if (ch_flags & CH_CANSEEK)
-				ch_fsize = pos;
 			return (EOI);
-		}
 		if (n == READ_AGAIN)
 		{
 			read_again = TRUE;
@@ -419,6 +415,8 @@ public void end_logfile(void)
 	logfile = -1;
 	free(namelogfile);
 	namelogfile = NULL;
+	putstr("\n");
+	flush();
 }
 
 /*

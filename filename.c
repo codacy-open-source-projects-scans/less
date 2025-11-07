@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1984-2024  Mark Nudelman
+ * Copyright (C) 1984-2025  Mark Nudelman
  *
  * You may distribute under the terms of either the GNU General Public
  * License or the Less License, as specified in the README file.
@@ -569,9 +569,10 @@ static FILE * shellcmd(constant char *cmd)
 			fd = popen(cmd, "r");
 		} else
 		{
-			size_t len = strlen(shell) + strlen(esccmd) + 5;
+			constant char *copt = shell_coption();
+			size_t len = strlen(shell) + strlen(esccmd) + strlen(copt) + 3;
 			scmd = (char *) ecalloc(len, sizeof(char));
-			SNPRINTF3(scmd, len, "%s %s %s", shell, shell_coption(), esccmd);
+			SNPRINTF3(scmd, len, "%s %s %s", shell, copt, esccmd);
 			free(esccmd);
 			fd = popen(scmd, "r");
 			free(scmd);
