@@ -51,8 +51,8 @@ static lbool use_poll = TRUE;
 #endif
 #if USE_POLL
 #include <poll.h>
-static lbool any_data = FALSE;
 #endif
+static lbool any_data = FALSE;
 
 /*
  * BSD setjmp() saves (and longjmp() restores) the signal mask.
@@ -93,7 +93,7 @@ static JUMP_BUF read_label;
 static JUMP_BUF open_label;
 
 extern int sigs;
-extern int ignore_eoi;
+extern lbool ignore_eoi;
 extern int exit_F_on_close;
 extern int follow_mode;
 extern int scanning_eof;
@@ -101,6 +101,7 @@ extern char intr_char;
 extern int is_tty;
 extern int quit_if_one_screen;
 extern int one_screen;
+extern int term_init_done;
 #if HAVE_TIME
 extern time_type less_start_time;
 #endif
@@ -369,10 +370,15 @@ start:
 #endif
 		return (READ_ERR);
 	}
-#if USE_POLL
-	if (fd != tty && n > 0)
-		any_data = TRUE;
-#endif
+	if (fd != tty && !any_data)
+	{
+		/* We have received the first byte of data, or
+		 * read EOF on an empty file: init the terminal. */
+		if (!term_init_done)
+			term_init();
+		if (n > 0)
+			any_data = TRUE;
+	}
 	return (n);
 }
 
