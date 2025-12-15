@@ -11,11 +11,15 @@
 
 ======================================================================
 
-	Major changes between "less" versions 685 and 688
+	Major changes between "less" versions 685 and 689
 
 * Add --autosave option (github #678).
 
 * Add ESC-f command (github #680).
+
+* Add column number to long prompt and = message.
+
+* Add prompt prototype sequences %C, %W, %Q and ?Q (github #685).
 
 * Map keypad keys, and use terminfo rather than termcap since keypad
   definitions don't exist in termcap (github #650).
@@ -51,6 +55,8 @@
   (github #681).
 
 * Disallow mouse click to open OSC8 link in SECURE mode (github #676).
+
+* Update Unicode tables.
 
 ======================================================================
 

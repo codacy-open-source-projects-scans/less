@@ -78,6 +78,7 @@ extern int      errmsgs;
 extern int      redraw_on_quit;
 extern int      term_addrs;
 extern lbool    first_time;
+extern lbool    term_init_ever;
 
 #if MSDOS_COMPILER==WIN32C && (defined(__MINGW32__) || defined(_MSC_VER))
 /* malloc'ed 0-terminated utf8 of 0-terminated wide ws, or null on errors */
@@ -331,7 +332,7 @@ int main(int argc, constant char *argv[])
 		{
 			if (posixly_correct)
 				end_opts = TRUE;
-			xbuf_add_data(&xfiles, (constant unsigned char *) &i, sizeof(i));
+			xbuf_add_data(&xfiles, &i, sizeof(i));
 		}
 	}
 #undef isoptstring
@@ -412,7 +413,7 @@ int main(int argc, constant char *argv[])
 		 * Output is not a tty.
 		 * Just copy the input file(s) to output.
 		 */
-		set_output(1); /* write to stdout */
+		set_output(1, TRUE); /* write to stdout */
 		SET_BINARY(1);
 		if (edit_first() == 0)
 		{
@@ -496,7 +497,7 @@ int main(int argc, constant char *argv[])
 		get_return();
 		putchr('\n');
 	}
-	set_output(1);
+	set_output(1, FALSE);
 	commands();
 	quit(QUIT_OK);
 	/*NOTREACHED*/

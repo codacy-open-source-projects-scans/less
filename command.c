@@ -32,7 +32,7 @@ extern int jump_sline;
 extern lbool quitting;
 extern int wscroll;
 extern int top_scroll;
-extern int ignore_eoi;
+extern lbool ignore_eoi;
 extern int hshift;
 extern int bs_mode;
 extern int proc_backspace;
@@ -638,6 +638,17 @@ static int mca_search_char(char c)
 }
 
 /*
+ * Jump back to the starting position of an incremental search.
+ */
+static void jump_search_incr_pos(void)
+{
+	if (search_incr_pos.pos == NULL_POSITION)
+		return;
+	hshift = search_incr_hshift;
+	jump_loc(search_incr_pos.pos, search_incr_pos.ln);
+}
+
+/*
  * Handle a character of a multi-character command.
  */
 static int mca_char(char c)
@@ -771,8 +782,7 @@ static int mca_char(char c)
 			{
 				/* User has backspaced to an empty pattern. */
 				undo_search(TRUE);
-				hshift = search_incr_hshift;
-				jump_loc(search_incr_pos.pos, search_incr_pos.ln);
+				jump_search_incr_pos();
 			} else
 			{
 				/*
@@ -785,8 +795,7 @@ static int mca_char(char c)
 				{
 					/* No match, invalid pattern, etc. */
 					undo_search(TRUE);
-					hshift = search_incr_hshift;
-					jump_loc(search_incr_pos.pos, search_incr_pos.ln);
+					jump_search_incr_pos();
 				}
 				no_poll = FALSE;
 			}
@@ -849,10 +858,7 @@ static void make_display(void)
 	 * We need to clear and repaint screen before any change.
 	 */
 	if (!full_screen && !(quit_if_one_screen && one_screen))
-	{
-		term_init(); /* {{ ugly, but we could get here before term_init }} */
 		lclear();
-	}
 	/*
 	 * If nothing is displayed yet, display starting from initial_scrpos.
 	 */
@@ -865,9 +871,9 @@ static void make_display(void)
 	} else if (is_screen_trashed() || !full_screen)
 	{
 		int save_top_scroll = top_scroll;
-		int save_ignore_eoi = ignore_eoi;
+		lbool save_ignore_eoi = ignore_eoi;
 		top_scroll = 1;
-		ignore_eoi = 0;
+		ignore_eoi = FALSE;
 		if (is_screen_trashed() == 2)
 		{
 			/* Special case used by ignore_eoi: re-open the input file
@@ -1315,7 +1321,7 @@ static int forw_loop(int action)
 	cmd_exec();
 	jump_forw_buffered();
 	highest_hilite = prev_hilite = 0;
-	ignore_eoi = 1;
+	ignore_eoi = TRUE;
 	while (!sigs)
 	{
 		if (action != A_F_FOREVER && highest_hilite > prev_hilite)
@@ -1329,7 +1335,7 @@ static int forw_loop(int action)
 		forward(1, FALSE, FALSE, FALSE);
 	}
 	highest_hilite = NULL_POSITION;
-	ignore_eoi = 0;
+	ignore_eoi = FALSE;
 	ch_set_eof();
 
 	/*

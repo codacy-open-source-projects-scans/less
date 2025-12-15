@@ -51,8 +51,8 @@ static lbool use_poll = TRUE;
 #endif
 #if USE_POLL
 #include <poll.h>
-#endif
 static lbool any_data = FALSE;
+#endif
 
 /*
  * BSD setjmp() saves (and longjmp() restores) the signal mask.
@@ -104,7 +104,7 @@ extern int one_screen;
 #if HAVE_TIME
 extern time_type less_start_time;
 #endif
-#if !MSDOS_COMPILER
+#if LESS_IREAD_TTY
 extern int tty;
 #endif
 
@@ -198,6 +198,7 @@ public lbool ttyin_ready(void)
 	if (!use_poll)
 		return FALSE;
 	{
+		/* {{ assert LESS_IREAD_TTY }} */
 		struct pollfd poller[1] = { { tty, POLLIN, 0 } };
 		poll(poller, 1, 0);
 		return ((poller[0].revents & POLLIN) != 0);
@@ -269,7 +270,7 @@ start:
 #endif
 #endif
 #endif
-#if !MSDOS_COMPILER
+#if !MSDOS_COMPILER /* {{ LESS_IREAD_TTY? }} */
 		if (fd != tty && !ABORT_SIGS())
 			/* Non-interrupt signal like SIGWINCH. */
 			return (READ_AGAIN);
@@ -369,14 +370,10 @@ start:
 #endif
 		return (READ_ERR);
 	}
-	if (fd != tty && !any_data)
-	{
-		/* We have received the first byte of data, or
-		 * read EOF on an empty file: init the terminal. */
-		term_init();
-		if (n > 0)
-			any_data = TRUE;
-	}
+#if USE_POLL
+	if (fd != tty && n > 0)
+		any_data = TRUE;
+#endif
 	return (n);
 }
 
@@ -420,6 +417,17 @@ public void intio(void)
 	{
 		LONG_JUMP(read_label, 1);
 	}
+}
+
+/*
+ * Called to indicate that we have read some file data
+ * (or the file is empty so we won't ever read data).
+ */
+public void have_read_data(void)
+{
+#if USE_POLL
+	any_data = TRUE;
+#endif
 }
 
 /*

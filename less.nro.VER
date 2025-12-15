@@ -26,6 +26,8 @@ less \- display the contents of a file in a terminal
 ]
 .RB [ \-b\ \c
 .IR space ]
+.RB [ \-D\ \c
+.IR color ]
 .RB [ \-h\ \c
 .IR lines ]
 .RB [ \-j\ \c
@@ -1375,9 +1377,6 @@ Disables sending the termcap initialization and deinitialization strings
 to the terminal.
 This is sometimes desirable if initialization or deinitialization does
 something unnecessary, like clearing the screen.
-If the \-X option is not used, the terminal initialization string
-is sent when the first byte of data is read,
-or end of file is reached on an empty file.
 Note that some terminals require the initialization string for proper
 operation, so they may not behave completely correctly when \-X is used.
 .IP "\-y\fIn\fP or \-\-max\-forw\-scroll=\fIn\fP"
@@ -1805,7 +1804,7 @@ If the completed filename is a directory, a "/" is appended to the filename.
 The environment variable LESSSEPARATOR can be used to specify a
 different character to append to a directory name.
 .IP "BACKTAB (SHIFT-TAB) [ ESC-TAB ]"
-Like, TAB, but cycles in the reverse direction thru the matching filenames.
+Like TAB, but cycles in the reverse direction thru the matching filenames.
 .IP "\*^L"
 Complete the partial filename to the left of the cursor.
 If it matches more than one filename, all matches are entered into
@@ -2269,7 +2268,10 @@ and a "j" means use the "target" line, as specified by the \-j option.
 .IP "%B"
 Replaced by the size of the current input file.
 .IP "%c"
-Replaced by the column number of the text appearing in the first
+Replaced by the column number of the text which appears in the first
+column of the screen.
+.IP "%C"
+Replaced by the column number of the text which appears (or would appear) in the last
 column of the screen.
 .IP "%d\fIX\fP"
 Replaced by the page number of a line in the input file.
@@ -2309,6 +2311,11 @@ The line used is determined by the \fIX\fP as with the %b option.
 .IP "%P\fIX\fP"
 Replaced by the percent into the current input file, based on line numbers.
 The line used is determined by the \fIX\fP as with the %b option.
+.IP "%Q"
+Replaced by the percent of the last column of text displayed on the screen
+compared to the length of the longest line currently displayed
+(that is, %C divided by %W).
+Note that using this sequence can make displaying the prompt be slower than usual.
 .IP "%s"
 Same as %B.
 .IP "%t"
@@ -2318,6 +2325,9 @@ Usually used at the end of the string, but may appear anywhere.
 Normally expands to the word "file".
 However if viewing files via a tags list using the \-t option,
 it expands to the word "tag".
+.IP "%W"
+Replaced by the width of the longest line currently displayed on the screen.
+Note that using this sequence can make displaying the prompt be slower than usual.
 .IP "%x"
 Replaced by the name of the next input file in the list.
 .PP
@@ -2365,6 +2375,9 @@ of the specified line is known.
 .IP "?P\fIX\fP"
 True if the percent into the current input file, based on line numbers,
 of the specified line is known.
+.IP "?Q"
+True if %Q is less than 100.
+Note that using this sequence can make displaying the prompt be slower than usual.
 .IP "?s"
 Same as "?B".
 .IP "?x"
@@ -2510,7 +2523,9 @@ and the environment variable LESS_IS_MORE is not set to 0,
 behaves (mostly) in conformance with the POSIX 
 .BR more (1)
 command specification.
-In this mode, less behaves differently in these ways:
+In this mode,
+.B less
+behaves differently in these ways:
 .PP
 The \-e option works differently.
 If the \-e option is not set,
@@ -2692,11 +2707,11 @@ Duration (in milliseconds) after starting to read data from the input,
 after which the "Waiting for data" message will be displayed.
 The default is 4000 (4 seconds).
 .IP LESSNOCONFIG
-If set to an empty string or "-", all environment variables except TERM are ignored
+If set to "\-", all environment variables except TERM are ignored
 (treated as if they were not set).
 If set to a comma-separated list of environment variable names,
 all environment variables except TERM and those in the list are ignored.
-If set to any value, all
+In either case (if set to any non-empty value), all
 .B lesskey
 files are also ignored.
 .IP LESS_IS_MORE
