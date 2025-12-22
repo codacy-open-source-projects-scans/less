@@ -59,7 +59,7 @@ static RETSIGTYPE u_interrupt(int type)
 #if HILITE_SEARCH
 	set_filter_pattern(NULL, 0);
 #endif
-	have_read_data();
+	polling_ok();
 	intio();
 }
 #endif
@@ -284,12 +284,9 @@ public void psignals(void)
 		 */
 		old_width = sc_width;
 		old_height = sc_height;
-		get_term();
+		get_term(FALSE);
 		if (sc_width != old_width || sc_height != old_height)
-		{
-			wscroll = (sc_height + 1) / 2;
 			screen_size_changed();
-		}
 		screen_trashed();
 	}
 #endif

@@ -1402,7 +1402,6 @@ public void commands(void)
 #endif
 
 	search_type = SRCH_FORW;
-	wscroll = (sc_height + 1) / 2;
 	newaction = A_NOACTION;
 
 	for (;;)
@@ -1421,12 +1420,6 @@ public void commands(void)
 			if (quitting)
 				quit(QUIT_SAVED_STATUS);
 		}
-
-		/*
-		 * See if window size changed, for systems that don't
-		 * generate SIGWINCH.
-		 */
-		check_winch();
 
 		/*
 		 * Display prompt and accept a character.
@@ -1508,7 +1501,9 @@ public void commands(void)
 				 * want erase_char/kill_char to be treated
 				 * as line editing characters.
 				 */
-				constant char tbuf[2] = { c, '\0' };
+				char tbuf[2];
+				tbuf[0] = c;
+				tbuf[1] = '\0';
 				action = fcmd_decode(tbuf, &extra);
 			}
 			/*

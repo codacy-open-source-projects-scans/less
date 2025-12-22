@@ -362,10 +362,13 @@ start:
 #endif
 		return (READ_ERR);
 	}
-#if USE_POLL
-	if (fd != tty && n > 0)
-		any_data = TRUE;
+#if LESS_IREAD_TTY
+	if (fd != tty)
 #endif
+	{
+		if (n > 0)
+			polling_ok();
+	}
 	return (n);
 }
 
@@ -412,10 +415,9 @@ public void intio(void)
 }
 
 /*
- * Called to indicate that we have read some file data
- * (or the file is empty so we won't ever read data).
+ * We can start polling the input file.
  */
-public void have_read_data(void)
+public void polling_ok(void)
 {
 #if USE_POLL
 	any_data = TRUE;
@@ -552,7 +554,7 @@ char * strchr(char *s, char c)
 #endif
 
 #if !HAVE_MEMCPY
-void * memcpy(void *dst, void *src, size_t len)
+void * memcpy(void *dst, constant void *src, size_t len)
 {
 	char *dstp = (char *) dst;
 	char *srcp = (char *) src;
@@ -561,6 +563,25 @@ void * memcpy(void *dst, void *src, size_t len)
 	for (i = 0;  i < len;  i++)
 		dstp[i] = srcp[i];
 	return (dst);
+}
+#endif
+
+#if !HAVE_STRSTR
+char * strstr(constant char *haystack, constant char *needle)
+{
+	if (*needle == '\0')
+		return (char *) haystack;
+	for (; *haystack; haystack++) {
+		constant char *h = haystack;
+		constant char *n = needle;
+		while (*h != '\0' && *n != '\0' && *h == *n) {
+			h++;
+			n++;
+		}
+		if (*n == '\0')
+			return (char *) haystack;
+	}
+	return NULL;
 }
 #endif
 

@@ -25,7 +25,7 @@ less \- display the contents of a file in a terminal
 .RB [ \- [ + ] aABcCdeEfFgGiIJKLmMnNqQrRsSuUVwWX\*~\c
 ]
 .RB [ \-b\ \c
-.IR space ]
+.IR size ]
 .RB [ \-D\ \c
 .IR color ]
 .RB [ \-h\ \c
@@ -1875,8 +1875,9 @@ Header lines (defined via the
 option) are not assigned line numbers.
 Line number 1 is assigned to the first line after any header lines.
 .IP "\fB\-\-no\-paste\fP"
-If the terminal supports xterm-compatible "bracketed paste",
-any text pasted into
+If the terminal supports
+.BR xterm -compatible
+"bracketed paste", any text pasted into
 .B less
 is ignored, except that one line of text may be pasted into the command line 
 at the bottom of the screen (search strings, file names, etc).
@@ -1981,7 +1982,7 @@ E, F, K, N, R or W.
 Setting any of these has the same effect as typing that
 control character at the beginning of every search pattern.
 For example, setting
-.B "\-\-search\-options=W"
+.B "\-\-search\-options=\fIW\fP"
 is the same as
 typing \*^W at the beginning of every pattern.
 The value may also contain a digit between 1 and 5,
@@ -2461,7 +2462,7 @@ is found in the LC_ALL, LC_CTYPE or LANG
 environment variables, then the default character set is utf\-8.
 .PP
 If that string is not found, but your system supports the
-.B setlocale
+.BR setlocale (3)
 interface,
 .B less
 will use setlocale to determine the character set.
@@ -2469,7 +2470,7 @@ setlocale is controlled by setting the LANG or LC_CTYPE environment
 variables.
 .PP
 Finally, if the
-.I setlocale
+.B setlocale
 interface is also not available, the default character set is utf\-8.
 .PP
 Control and binary characters are displayed in standout (reverse video).
@@ -3033,6 +3034,14 @@ List of characters which are considered "metacharacters" by the shell.
 .IP LESSMETAESCAPE
 Prefix which less will add before each metacharacter in a
 command sent to the shell (default "\e").
+.IP LESSNOCONFIG
+If set to "\-", all environment variables except TERM are ignored
+(treated as if they were not set).
+If set to a comma-separated list of environment variable names,
+all environment variables except TERM and those in the list are ignored.
+In either case (if set to any non-empty value), all
+.B lesskey
+files are also ignored.
 .IP LESSOPEN
 Command line to invoke the (optional) input-preprocessor.
 .IP LESSSECURE
@@ -3072,14 +3081,6 @@ so scrolling may be slower.
 Duration (in milliseconds) after starting to read data from the input,
 after which the "Waiting for data" message will be displayed.
 The default is 4000 (4 seconds).
-.IP LESSNOCONFIG
-If set to "\-", all environment variables except TERM are ignored
-(treated as if they were not set).
-If set to a comma-separated list of environment variable names,
-all environment variables except TERM and those in the list are ignored.
-In either case (if set to any non-empty value), all
-.B lesskey
-files are also ignored.
 .IP LESS_IS_MORE
 Emulate the
 .BR more (1)

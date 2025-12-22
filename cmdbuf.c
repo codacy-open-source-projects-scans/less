@@ -807,8 +807,10 @@ public void cmd_addhist(struct mlist *mlist, constant char *cmd, lbool modified)
 	{
 		if (mlist == &mlist_search && autosave_action('/'))
 			save_cmdhist();
+#if SHELL_ESCAPE || PIPEC
 		else if (mlist == &mlist_shell && autosave_action('!'))
 			save_cmdhist();
+#endif
 	}
 #endif
 }
@@ -1469,7 +1471,7 @@ static int mlist_size(struct mlist *ml)
 static char * histfile_find(lbool must_exist)
 {
 	constant char *home = lgetenv("HOME");
-	char *name = NULL;
+	char *name;
 
 	/* Try in $XDG_STATE_HOME, then in $HOME/.local/state, then in $XDG_DATA_HOME, then in $HOME. */
 #if OS2
@@ -1760,7 +1762,7 @@ public void save_cmdhist(void)
 	int skip_shell;
 	struct save_ctx ctx;
 	constant char *s;
-	FILE *fout = NULL;
+	FILE *fout;
 	int histsize = 0;
 
 	if (!secure_allow(SF_HISTORY) || !histfile_modified())

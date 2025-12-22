@@ -306,11 +306,11 @@ extern int mousecap;
 extern int is_tty;
 extern int use_color;
 extern int no_paste;
+extern int wscroll;
 #if HILITE_SEARCH
 extern int hilite_search;
 #endif
 #if MSDOS_COMPILER==WIN32C
-extern int wscroll;
 extern HANDLE tty;
 #else
 extern int tty;
@@ -819,7 +819,7 @@ static constant char * ltgetstr(constant char *tiname, constant char *tcname, ch
 /*
  * Get size of the output screen.
  */
-static void scrsize(void)
+public void scrsize(void)
 {
 	constant char *s;
 	int sys_height;
@@ -834,7 +834,6 @@ static void scrsize(void)
 #else
 #define DEF_SC_HEIGHT   24
 #endif
-
 
 	sys_width = sys_height = 0;
 
@@ -966,6 +965,11 @@ static void scrsize(void)
  */
 public void screen_size_changed(void)
 {
+	constant char *env = lgetenv("LESS_SHELL_LINES");
+	shell_lines = isnullenv(env) ? 1 : atoi(env);
+	if (shell_lines >= sc_height)
+		shell_lines = sc_height - 1;
+	wscroll = (sc_height + 1) / 2;
 	calc_jump_sline();
 	calc_shift_count();
 	calc_match_shift();
@@ -1323,7 +1327,7 @@ public void init_win_colors(void)
 /*
  * Get terminal capabilities via termcap.
  */
-public void get_term(void)
+public void get_term(lbool init)
 {
 	termcap_debug = !isnullenv(lgetenv("LESS_TERMCAP_DEBUG"));
 #if MSDOS_COMPILER
@@ -1349,6 +1353,7 @@ public void get_term(void)
     }
 #else
 #if MSDOS_COMPILER==WIN32C
+	if (init)
     {
 	CONSOLE_SCREEN_BUFFER_INFO scr;
 
@@ -1628,12 +1633,6 @@ public void get_term(void)
 	}
 }
 #endif /* MSDOS_COMPILER */
-	{
-		const char *env = lgetenv("LESS_SHELL_LINES");
-		shell_lines = isnullenv(env) ? 1 : atoi(env);
-		if (shell_lines >= sc_height)
-			shell_lines = sc_height - 1;
-	}
 }
 
 #if !MSDOS_COMPILER
@@ -1859,7 +1858,6 @@ static void ltputs(constant char *str, int affcnt, int (*f_putc)(int))
 {
 	while (str != NULL && *str != '\0')
 	{
-#if HAVE_STRSTR
 		constant char *obrac = strstr(str, "$<");
 		if (obrac != NULL)
 		{
@@ -1887,7 +1885,6 @@ static void ltputs(constant char *str, int affcnt, int (*f_putc)(int))
 				continue;
 			}
 		}
-#endif
 		/* Pass the rest of the string to tputs and we're done. */
 		do_tputs(str, affcnt, f_putc);
 		break;
@@ -2025,8 +2022,8 @@ public void term_deinit(void)
 	{
 		if (mousecap)
 			deinit_mouse();
-        if (no_paste)
-            deinit_bracketed_paste();
+		if (no_paste)
+			deinit_bracketed_paste();
 		if (!no_keypad)
 			ltputs(sc_e_keypad, sc_height, putchr);
 		if (!no_init)
@@ -2340,6 +2337,7 @@ public void line_left(void)
 #endif
 }
 
+#if 0
 /*
  * Check if the console size has changed and reset internals 
  * (in lieu of SIGWINCH for WIN32).
@@ -2369,6 +2367,7 @@ public void check_winch(void)
 	}
 #endif
 }
+#endif
 
 /*
  * Goto a specific line on the screen.
@@ -2657,14 +2656,14 @@ public void clear_bot(void)
 public void init_bracketed_paste(void)
 {
 #if !MSDOS_COMPILER
-    ltputs(sc_s_bracketed_paste, 1, putchr);
+	ltputs(sc_s_bracketed_paste, 1, putchr);
 #endif
 }
 
 public void deinit_bracketed_paste(void)
 {
 #if !MSDOS_COMPILER
-    ltputs(sc_e_bracketed_paste, 1, putchr);
+	ltputs(sc_e_bracketed_paste, 1, putchr);
 #endif
 }
 
@@ -3114,7 +3113,7 @@ typedef struct XINPUT_RECORD {
 
 typedef struct WIN32_CHAR {
 	struct WIN32_CHAR *wc_next;
-	char wc_ch;
+	int wc_ch;
 } WIN32_CHAR;
 
 static WIN32_CHAR *win32_queue = NULL;
@@ -3122,7 +3121,7 @@ static WIN32_CHAR *win32_queue = NULL;
 /*
  * Is the win32_queue nonempty?
  */
-static int win32_queued_char(void)
+static lbool win32_queued_char(void)
 {
 	return (win32_queue != NULL);
 }
@@ -3130,7 +3129,7 @@ static int win32_queued_char(void)
 /*
  * Push a char onto the back of the win32_queue.
  */
-static void win32_enqueue(char ch)
+static void win32_enqueue(int ch)
 {
 	WIN32_CHAR *wch = (WIN32_CHAR *) ecalloc(1, sizeof(WIN32_CHAR));
 	wch->wc_ch = ch;
@@ -3161,10 +3160,10 @@ public void WIN32ungetch(int ch)
 /*
  * Get a char from the front of the win32_queue.
  */
-static char win32_get_queue(void)
+static int win32_get_queue(void)
 {
 	WIN32_CHAR *wch = win32_queue;
-	char ch = wch->wc_ch;
+	int ch = wch->wc_ch;
 	win32_queue = wch->wc_next;
 	free(wch);
 	return ch;
@@ -3331,8 +3330,8 @@ static lbool win32_scan_code(XINPUT_RECORD *xip)
 static lbool win32_key_event(XINPUT_RECORD *xip)
 {
 	int repeat;
-	char utf8[UTF8_MAX_LENGTH];
-	char *up;
+	unsigned char utf8[UTF8_MAX_LENGTH];
+	unsigned char *up;
 
 	if (xip->ir.EventType != KEY_EVENT ||
 	    ((xip->ir.Event.KeyEvent.dwControlKeyState & (RIGHT_ALT_PRESSED|LEFT_CTRL_PRESSED)) == (RIGHT_ALT_PRESSED|LEFT_CTRL_PRESSED) && xip->ir.Event.KeyEvent.uChar.UnicodeChar == 0) ||
@@ -3360,10 +3359,22 @@ static lbool win32_key_event(XINPUT_RECORD *xip)
 	put_wchar(&up, xip->ichar);
 	for (; repeat > 0; --repeat)
 	{
-		constant char *p;
+		constant unsigned char *p;
 		for (p = utf8; p < up; ++p)
 			 win32_enqueue(*p);
 	}
+	return (TRUE);
+}
+
+/*
+ * Handle a window input event.
+ */
+static lbool win32_window_event(XINPUT_RECORD *xip)
+{
+	if (xip->ir.EventType != WINDOW_BUFFER_SIZE_EVENT)
+		return (FALSE);
+	sigs |= S_WINCH;
+	win32_enqueue(READ_AGAIN);
 	return (TRUE);
 }
 
@@ -3393,7 +3404,7 @@ public lbool win32_kbhit2(lbool no_queued)
 		ReadConsoleInputW(tty, &xip.ir, 1, &nread);
 		if (nread == 0)
 			return (FALSE);
-		if (win32_mouse_event(&xip) || win32_key_event(&xip))
+		if (win32_mouse_event(&xip) || win32_key_event(&xip) || win32_window_event(&xip))
 			break;
 	}
 	return (TRUE);
@@ -3407,7 +3418,7 @@ public lbool win32_kbhit(void)
 /*
  * Read a character from the keyboard.
  */
-public char WIN32getch(void)
+public int WIN32getch(void)
 {
 	while (!win32_kbhit())
 	{

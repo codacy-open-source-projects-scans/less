@@ -249,7 +249,7 @@ int main(int argc, constant char *argv[])
 	size_t num_files;
 	size_t f;
 	lbool end_opts = FALSE;
-	lbool posixly_correct = FALSE;
+	lbool posixly_correct;
 
 	no_config = getenv("LESSNOCONFIG");
 
@@ -347,7 +347,7 @@ int main(int argc, constant char *argv[])
 		quit(QUIT_OK);
 	}
 
-	get_term();
+	get_term(TRUE);
 	expand_cmd_tables();
 
 #if EDITOR
