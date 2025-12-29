@@ -46,6 +46,13 @@ AC_TYPE_SIZE_T
 
 # Checks for terminal libraries
 AC_MSG_CHECKING([for working terminal libraries])
+
+AC_ARG_WITH(termlib,
+  [  --without-termlib       do not require a terminal library])
+if test "x$with_termlib" = "xno"; then
+  AC_MSG_RESULT([not using a terminal library due to --without-termlib])
+else
+
 TERMLIBS=
 include_termcap_h=
 if test "x$ac_cv_header_termcap_h" = xyes; then include_termcap_h="#include <termcap.h>"; elif test "x$ac_cv_header_ncurses_termcap_h" = xyes; then include_termcap_h="#include <ncurses/termcap.h>"; elif test "x$ac_cv_header_ncursesw_termcap_h" = xyes; then include_termcap_h="#include <ncursesw/termcap.h>"; fi
@@ -186,6 +193,8 @@ AC_MSG_CHECKING(for terminfo)
 AC_LINK_IFELSE([AC_LANG_PROGRAM([[
 #include <curses.h>
 #include <term.h>]], [[setupterm("",0,0); tigetflag(""); tigetnum(""); tigetstr("")]])],[AC_MSG_RESULT(yes); AC_DEFINE(HAVE_TERMINFO)],[AC_MSG_RESULT(no)])
+
+fi
 
 # Autoheader templates for symbols defined later by AC_DEFINE.
 AH_TEMPLATE([HAVE_GNU_REGEX],
@@ -370,7 +379,7 @@ fi
 
 # Compile in secure mode?
 AC_ARG_WITH(secure,
-  [  --with-secure           Compile in secure mode])
+  [  --with-secure           compile in secure mode])
 AS_IF([test "x$with_secure" = "xyes"],[
   AC_DEFINE(SECURE_COMPILE, 1)
   AC_SUBST(SECURE_COMPILE,1)], [AC_DEFINE(SECURE_COMPILE, 0)

@@ -1327,7 +1327,7 @@ public void init_win_colors(void)
 /*
  * Get terminal capabilities via termcap.
  */
-public void get_term(lbool init)
+public void get_term()
 {
 	termcap_debug = !isnullenv(lgetenv("LESS_TERMCAP_DEBUG"));
 #if MSDOS_COMPILER
@@ -1353,7 +1353,6 @@ public void get_term(lbool init)
     }
 #else
 #if MSDOS_COMPILER==WIN32C
-	if (init)
     {
 	CONSOLE_SCREEN_BUFFER_INFO scr;
 
@@ -1641,7 +1640,6 @@ public void get_term(lbool init)
  * We use the trick of calling tputs, but as a char printing function
  * we give it inc_costcount, which just increments "costcount".
  * This tells us how many chars would be printed by using this string.
- * {{ Couldn't we just use strlen? }}
  */
 static int costcount;
 
@@ -1765,7 +1763,7 @@ static void initcolor(void)
 static void win32_init_vt_term(void)
 {
 	if (vt_enabled == 0 || (vt_enabled == 1 && con_out == con_out_ours))
-		return;  // already initialized
+		return;  /* already initialized */
 
 	/* don't care about the initial mode, and win VT hard-enables am+xn */
 	vt_enabled = SetConsoleMode(con_out, ENABLE_PROCESSED_OUTPUT |
@@ -1810,9 +1808,11 @@ static void win32_init_term(void)
 			CONSOLE_TEXTMODE_BUFFER,
 			(LPVOID) NULL);
 
-		// we don't care about the initial state. we need processed
-		// output without anything else (no wrap at EOL, no VT,
-		// no disabled auto-return).
+		/*
+		 * We don't care about the initial state. We need processed
+		 * output without anything else (no wrap at EOL, no VT,
+		 * no disabled auto-return).
+		 */
 		if (SetConsoleMode(con_out_ours, ENABLE_PROCESSED_OUTPUT))
 			auto_wrap = 0;
 	}
@@ -2337,7 +2337,6 @@ public void line_left(void)
 #endif
 }
 
-#if 0
 /*
  * Check if the console size has changed and reset internals 
  * (in lieu of SIGWINCH for WIN32).
@@ -2362,12 +2361,11 @@ public void check_winch(void)
 		if (!no_init && con_out_ours == con_out)
 			SetConsoleScreenBufferSize(con_out, size);
 		pos_init();
-		wscroll = (sc_height + 1) / 2;
+		screen_size_changed();
 		screen_trashed();
 	}
 #endif
 }
-#endif
 
 /*
  * Goto a specific line on the screen.
@@ -3373,7 +3371,6 @@ static lbool win32_window_event(XINPUT_RECORD *xip)
 {
 	if (xip->ir.EventType != WINDOW_BUFFER_SIZE_EVENT)
 		return (FALSE);
-	sigs |= S_WINCH;
 	win32_enqueue(READ_AGAIN);
 	return (TRUE);
 }
