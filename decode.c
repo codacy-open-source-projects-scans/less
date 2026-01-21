@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1984-2025  Mark Nudelman
+ * Copyright (C) 1984-2026  Mark Nudelman
  *
  * You may distribute under the terms of either the GNU General Public
  * License or the Less License, as specified in the README file.
@@ -1176,6 +1176,10 @@ static int add_hometable(int (*call_lesskey)(constant char *, lbool), constant c
 	constant char *efilename;
 	int r;
 
+#if LESSTEST
+	if (is_lesstest()) /* Don't use lesskey files in lesstest */
+		return -1;
+#endif
 	if (envname != NULL && (efilename = lgetenv(envname)) != NULL)
 		filename = save(efilename);
 	else if (sysvar) /* def_filename is full path */

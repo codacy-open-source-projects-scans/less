@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1984-2025  Mark Nudelman
+ * Copyright (C) 1984-2026  Mark Nudelman
  *
  * You may distribute under the terms of either the GNU General Public
  * License or the Less License, as specified in the README file.
@@ -369,6 +369,15 @@ static void set_termio_flags(
 		| ONLRET
 #endif
 	);
+
+	s->c_iflag &= ~(0
+#ifdef ICRNL
+		| ICRNL
+#endif
+#ifdef INLCR
+		| INLCR
+#endif
+	);
 }
 #endif
 
@@ -381,7 +390,7 @@ static void set_termio_flags(
  *      4. \t is NOT expanded into spaces.
  *      5. Signal-causing characters such as ctrl-C (interrupt),
  *         etc. are NOT disabled.
- * It doesn't matter whether an input \n is mapped to \r, or vice versa.
+ *      6. Input \r is not mapped to \n, nor vice versa.
  */
 public void raw_mode(int on)
 {
@@ -1418,6 +1427,8 @@ public void get_term()
 		term = DEFAULT_TERM;
 	hardcopy = 0;
 #if USE_TERMINFO
+	if (cur_term != NULL)
+		del_curterm(cur_term);
 	if (setupterm(term, -1, NULL) != OK)
 		hardcopy = 1;
 #else
