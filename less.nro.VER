@@ -905,6 +905,9 @@ Prompts.
 The rscroll character.
 .IP "S"
 Search results.
+.IP "T"
+The tilde lines displayed after the end of the file or
+before the beginning of the file.
 .IP "W"
 The highlight enabled via the
 .B "\-w"
@@ -1001,7 +1004,7 @@ the corresponding color is set to that of normal text.
 .PP
 A 4-bit or 8-bit color string may be followed by one or more of the
 following characters to set text attributes in addition to the color.
-.IP "s or ~"
+.IP "s or \*~"
 Standout (reverse video)
 .IP "u or _"
 Underline
@@ -1560,7 +1563,7 @@ options.
 Displays the version number of
 .BR less .
 .IP "\fB\-w\fP or \fB\-\-hilite\-unread\fP"
-Temporarily highlights the first "new" line after a forward movement
+Temporarily highlights the first "new" line after a movement
 of a full page.
 The first "new" line is the line immediately following the line previously
 at the bottom of the screen.
@@ -1579,7 +1582,7 @@ in which case only the status column is highlighted.
 Like
 .BR "\-w" ","
 but temporarily highlights the first new line after any
-forward movement command larger than one line.
+movement command larger than one line.
 .IP "\fB\-x\fP\fIn\fP,...\& or \fB\-\-tabs=\fP\fIn\fP,..."
 Sets tab stops.
 If only one \fIn\fP is specified, tab stops are set at multiples of \fIn\fP.

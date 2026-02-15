@@ -618,6 +618,7 @@ static int color_from_namechar(char namechar)
 	case 'P': return AT_COLOR_PROMPT;
 	case 'R': return AT_COLOR_RSCROLL;
 	case 'S': return AT_COLOR_SEARCH;
+	case 'T': return AT_COLOR_TILDE;
 	case 'W': case 'A': return AT_COLOR_ATTN;
 	case 'n': return AT_NORMAL;
 	case 's': return AT_STANDOUT;
@@ -648,6 +649,11 @@ public void opt_D(int type, constant char *s)
 		if (*s == 'a')
 		{
 			sgr_mode = !sgr_mode;
+			if (type == TOGGLE)
+			{
+				p.p_string = (sgr_mode) ? "on" : "off";
+				error("SGR mode is %s", &p);
+			}
 			break;
 		}
 #endif
@@ -700,12 +706,6 @@ public void opt_D(int type, constant char *s)
 			return;
 		}
 		break;
-#if MSDOS_COMPILER
-	case QUERY:
-		p.p_string = (sgr_mode) ? "on" : "off";
-		error("SGR mode is %s", &p);
-		break;
-#endif
 	}
 }
 

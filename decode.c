@@ -317,6 +317,9 @@ static struct tablelist *list_ecmd_tables = NULL;
 static struct tablelist *list_var_tables = NULL;
 static struct tablelist *list_sysvar_tables = NULL;
 
+#if USERFILE
+static struct tablelist * find_stop_table(struct tablelist *t);
+#endif
 
 /*
  * Expand special key abbreviations in a command table.
@@ -335,7 +338,7 @@ static void expand_special_keys(unsigned char *table, size_t len)
 		 * Rewrite each command in the table with any
 		 * special key abbreviations expanded.
 		 */
-		for (to = fm;  *fm != '\0'; )
+		for (to = fm;  fm < table + len && *fm != '\0'; )
 		{
 			if (*fm != SK_SPECIAL_KEY)
 			{
@@ -370,7 +373,7 @@ static void expand_special_keys(unsigned char *table, size_t len)
 		a = *fm++ & 0377;
 		if (a & A_EXTRA)
 		{
-			while (*fm++ != '\0')
+			while (fm < table + len && *fm++ != '\0')
 				continue;
 		}
 	}
@@ -404,6 +407,8 @@ public void expand_cmd_tables(void)
  */
 public void init_cmds(void)
 {
+	struct tablelist *t;
+
 	/*
 	 * Add the default command tables.
 	 */
@@ -449,6 +454,16 @@ public void init_cmds(void)
 	
 	add_content_table(lesskey_content, "LESSKEY_CONTENT_SYSTEM", TRUE);
 	add_content_table(lesskey_content, "LESSKEY_CONTENT", FALSE);
+
+	/*
+	 * If any command table contains a #stop directive, discard all other tables.
+	 */
+	t = find_stop_table(list_fcmd_tables);
+	if (t != NULL)
+	{
+		t->t_next = NULL;
+		list_fcmd_tables = t;
+	}
 #endif /* USERFILE */
 }
 
@@ -776,82 +791,95 @@ static constant unsigned char * cmd_next_entry(constant unsigned char *entry, mu
 }
 
 /*
- * Search a single command table for the command string in cmd.
+ * Does a command table contain a #stop directive?
  */
-static int cmd_search(constant char *cmd, constant unsigned char *table, constant unsigned char *endtable, constant unsigned char **extra, size_t *mlen)
+static lbool table_has_stop(struct tablelist *t)
 {
-	int action = A_INVALID;
-	size_t match_len = 0;
-	if (extra != NULL)
-		*extra = NULL;
-	while (table < endtable)
+	constant unsigned char *entry = t->t_start;
+
+	while (entry < t->t_end)
 	{
-		int taction;
-		constant unsigned char *textra;
-		size_t cmdlen;
-		size_t match = cmd_match((constant char *) table, cmd);
-		table = cmd_next_entry(table, &taction, &textra, &cmdlen);
-		if (taction == A_END_LIST)
-			return (-action);
-		if (match >= match_len)
-		{
-			if (match == cmdlen) /* (last chars of) cmd matches this table entry */
-			{
-				action = taction;
-				if (extra != NULL)
-					*extra = textra;
-			} else if (match > 0 && action == A_INVALID) /* cmd is a prefix of this table entry */
-			{
-				action = A_PREFIX;
-			}
-			match_len = match;
-		}
+		int action;
+		entry = cmd_next_entry(entry, &action, NULL, NULL);
+		if (action == A_END_LIST)
+			return TRUE;
 	}
-	if (mlen != NULL)
-		*mlen = match_len;
-	return (action);
+	return FALSE;
 }
 
 /*
- * Decode a command character and return the associated action.
- * The "extra" string, if any, is returned in sp.
+ * Find the first command table with a #stop directive, if any.
  */
-static int cmd_decode(struct tablelist *tlist, constant char *cmd, constant char **sp)
+static struct tablelist * find_stop_table(struct tablelist *t)
 {
-	struct tablelist *t;
+	for (;  t != NULL;  t = t->t_next)
+	{
+		if (table_has_stop(t))
+			return t;
+	}
+	return NULL;
+}
+
+/*
+ * Search a single command table for the command string in cmd.
+ */
+static int cmd_decode(struct tablelist *tlist, constant char *cmd, lbool anchored, constant char **extra)
+{
 	int action = A_INVALID;
 	size_t match_len = 0;
+	constant unsigned char *table = NULL;
+	constant unsigned char *endtable;
 
-	/*
-	 * Search for the cmd thru all the command tables.
-	 * If we find it more than once, take the last one.
-	 */
-	*sp = NULL;
-	for (t = tlist;  t != NULL;  t = t->t_next)
+	if (extra != NULL)
+		*extra = NULL;
+	while (tlist != NULL)
 	{
-		constant unsigned char *tsp;
-		size_t mlen = match_len;
-		int taction = cmd_search(cmd, t->t_start, t->t_end, &tsp, &mlen);
-		if (mlen >= match_len)
+		int taction;
+		constant unsigned char *textra;
+		size_t tcmdlen;
+		size_t tmatch;
+		if (table == NULL)
 		{
-			match_len = mlen;
-			if (taction != A_INVALID)
+			/* Beginning of table: set start/end pointers. */
+			table = tlist->t_start;
+			endtable = tlist->t_end;
+		}
+		if (anchored)
+			tmatch = (strcmp((constant char *) table, cmd) == 0) ? strlen(cmd) : 0;
+		else
+			tmatch = cmd_match((constant char *) table, cmd);
+		table = cmd_next_entry(table, &taction, &textra, &tcmdlen);
+		if (table >= endtable)
+		{
+			/* End of table; move to next table. */
+			tlist = tlist->t_next;
+			table = NULL;
+		}
+		if (taction == A_END_LIST)
+			break;
+		if (tmatch >= match_len)
+		{
+			if (tmatch == tcmdlen)
 			{
-				*sp = (constant char *) tsp;
-				if (taction < 0)
-				{
-					action = -taction;
-					break;
-				}
+				/* (Last chars of) cmd matches this table entry. */
 				action = taction;
+				if (extra != NULL)
+					*extra = (constant char *) textra;
+			} else if (tmatch > 0 && (tmatch > match_len || action == A_INVALID))
+			{
+				/* cmd is a prefix of this table entry */
+				action = A_PREFIX;
+				if (extra != NULL)
+					*extra = NULL;
 			}
+			match_len = tmatch;
 		}
 	}
 	if (action == A_X11MOUSE_IN)
 		action = x11mouse_action(FALSE);
 	else if (action == A_X116MOUSE_IN)
 		action = x116mouse_action(FALSE);
-	return (action);
+	return action;
 }
 
 /*
@@ -859,7 +887,7 @@ static int cmd_decode(struct tablelist *tlist, constant char *cmd, constant char
  */
 public int fcmd_decode(constant char *cmd, constant char **sp)
 {
-	return (cmd_decode(list_fcmd_tables, cmd, sp));
+	return (cmd_decode(list_fcmd_tables, cmd, FALSE, sp));
 }
 
 /*
@@ -867,7 +895,7 @@ public int fcmd_decode(constant char *cmd, constant char **sp)
  */
 public int ecmd_decode(constant char *cmd, constant char **sp)
 {
-	return (cmd_decode(list_ecmd_tables, cmd, sp));
+	return (cmd_decode(list_ecmd_tables, cmd, FALSE, sp));
 }
 
 /*
@@ -920,13 +948,13 @@ public constant char * lgetenv(constant char *var)
 
 	if (ignore_env(var))
 		return (NULL);
-	a = cmd_decode(list_var_tables, var, &s);
+	a = cmd_decode(list_var_tables, var, TRUE, &s);
 	if (a == EV_OK)
 		return (s);
 	s = getenv(var);
 	if (s != NULL && *s != '\0')
 		return (s);
-	a = cmd_decode(list_sysvar_tables, var, &s);
+	a = cmd_decode(list_sysvar_tables, var, TRUE, &s);
 	if (a == EV_OK)
 		return (s);
 	return (NULL);
