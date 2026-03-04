@@ -23,6 +23,9 @@
 * Allow m and M commands to take a numeric argument to specify the
   line to be marked (github #736).
 
+* Support POSIX character classes with the built-in V8 regex library
+  (github #732).
+
 * Change | command to pipe just one line if the marked line is at the
   top of the screen (github #733).
 
@@ -31,6 +34,9 @@
 
 * Make early error messages go to stderr if stdout is redirected
   (github #719).
+
+* Don't retry read after read error; fixes hang when attempting to read
+  a directory or other unreadable file (github #741).
 
 * Fix buffer overflow when using malformed lesskey file (github #721).
 
