@@ -13,6 +13,8 @@
 
 	Major changes between "less" versions 692 and 694
 
+* Add --past-eof option.
+
 * Add -DT option to format tilde lines (github #725).
 
 * Make -w/-W highlight lines when moving backward as well as forward
@@ -53,6 +55,8 @@
 
 * Fix incorrect display using --color to set character attributes
   without color, such as -DS-u (github #730).
+
+* Fix crash when tags file contains invalid line number 0 (github #743).
 
 ======================================================================
 
