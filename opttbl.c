@@ -50,6 +50,7 @@ public int no_init;             /* Disable sending ti/te termcap strings */
 public int no_keypad;           /* Disable sending ks/ke termcap strings */
 public int twiddle;             /* Show tildes after EOF */
 public int show_attn;           /* Hilite first unread line */
+public int hilite_target;       /* Hilite target line */
 public int status_col;          /* Display a status column */
 public int use_lessopen;        /* Use the LESSOPEN filter */
 public int quit_on_intr;        /* Quit on interrupt */
@@ -195,6 +196,7 @@ static struct optname proc_return_optname = { "proc-return", NULL };
 static struct optname match_shift_optname = { "match-shift", NULL };
 static struct optname first_cmd_at_prompt_optname = { "cmd", NULL };
 static struct optname autosave_optname = { "autosave", NULL };
+static struct optname hilite_target_optname = { "hilite-target", NULL };
 #if LESSTEST
 static struct optname ttyin_name_optname = { "tty",              NULL };
 #endif /*LESSTEST*/
@@ -445,6 +447,14 @@ static struct loption option[] =
 		O_NOVAR, 0, NULL, opt__V,
 		{ NULL, NULL, NULL }
 	},
+	{ OLETTER_NONE, &hilite_target_optname,
+		O_BOOL, OPT_OFF, &hilite_target, opt_hilite_target,
+		{
+			"Don't highlight target line",
+			"Highlight target line",
+			NULL
+		}
+	},
 	{ 'w', &w_optname,
 		O_TRIPLE|O_REPAINT, OPT_OFF, &show_attn, NULL,
 		{
@@ -632,8 +642,8 @@ static struct loption option[] =
 	{ OLETTER_NONE, &status_line_optname,
 		O_BOOL|O_REPAINT, OPT_OFF, &status_line, NULL,
 		{
-			"Don't color each line with its status column color",
-			"Color each line with its status column color",
+			"Line highlight applies to text only",
+			"Line highlight applies to entire width of screen",
 			NULL
 		}
 	},
