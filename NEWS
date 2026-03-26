@@ -11,7 +11,7 @@
 
 ======================================================================
 
-	Major changes between "less" versions 692 and 694
+	Major changes between "less" versions 692 and 695
 
 * Add --hilite-target option (github #745).
 
@@ -72,6 +72,8 @@
   without color, such as -DS-u (github #730).
 
 * Fix crash when tags file contains invalid line number 0 (github #743).
+
+* Fix build when tparm() doesn't use varargs (github #748).
 
 ======================================================================
 
