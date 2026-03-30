@@ -21,12 +21,13 @@
 #endif
 
 public int errmsgs;    /* Count of messages displayed by error() */
-public int need_clr;
+public lbool prompting = FALSE;
+static lbool need_clr = FALSE;
 
 extern int sigs;
 extern int sc_width;
 extern int so_s_width, so_e_width;
-extern int is_tty;
+extern lbool is_tty;
 extern int oldbot;
 extern int utf_mode;
 extern int status_col;
@@ -35,6 +36,7 @@ extern int hilite_target;
 extern int use_color;
 extern char intr_char;
 extern lbool term_init_ever;
+extern int pr_type;
 
 #if MSDOS_COMPILER==WIN32C || MSDOS_COMPILER==BORLANDC || MSDOS_COMPILER==DJGPPC
 extern int ctldisp;
@@ -491,6 +493,13 @@ public int putchr(int ch)
 	 */
 	if (!term_init_ever && outfd == 1)
 		term_init();
+	if (prompting)
+	{
+		constant char *epr = end_pr_string();
+		prompting = FALSE;
+		if (epr != NULL)
+			putstr(epr);
+	}
 
 #if 0 /* fake UTF-8 output for testing */
 	if (utf_mode)
@@ -537,7 +546,7 @@ public void clear_bot_if_needed(void)
 {
 	if (!need_clr)
 		return;
-	need_clr = 0;
+	need_clr = FALSE;
 	clear_bot();
 }
 
@@ -768,7 +777,7 @@ static void ierror_suffix(constant char *fmt, constant PARG *parg, constant char
 	putstr(suffix3);
 	at_exit();
 	flush();
-	need_clr = 1;
+	need_clr = TRUE;
 }
 
 public void ierror(constant char *fmt, constant PARG *parg)

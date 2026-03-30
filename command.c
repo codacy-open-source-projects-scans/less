@@ -23,7 +23,7 @@
 extern int erase_char, erase2_char, kill_char;
 extern int sigs;
 extern int quit_if_one_screen;
-extern int one_screen;
+extern lbool one_screen;
 extern int sc_width;
 extern int sc_height;
 extern char *kent;
@@ -56,6 +56,7 @@ extern lbool read_error;
 extern POSITION soft_eof;
 extern POSITION search_incr_start;
 extern char *first_cmd_at_prompt;
+extern lbool prompting;
 #if SHELL_ESCAPE || PIPEC
 extern void *ml_shell;
 #endif
@@ -66,7 +67,7 @@ extern constant char *editproto;
 extern char *osc8_uri;
 #endif
 extern int shift_count;
-extern int forw_prompt;
+extern lbool forw_prompt;
 extern int incr_search;
 extern int full_screen;
 #if MSDOS_COMPILER==WIN32C
@@ -210,7 +211,7 @@ static void mca_search1(void)
 		cmd_putstr("/");
 	else
 		cmd_putstr("?");
-	forw_prompt = 0;
+	forw_prompt = FALSE;
 }
 
 static void mca_search(void)
@@ -250,7 +251,7 @@ static void mca_opt_toggle(void)
 		cmd_putstr("!");
 		break;
 	}
-	forw_prompt = 0;
+	forw_prompt = FALSE;
 	set_mlist(NULL, CF_OPTION);
 }
 
@@ -957,7 +958,7 @@ static void prompt(void)
 	    entire_file_displayed() && !(ch_getflags() & CH_HELPFILE) && 
 	    next_ifile(curr_ifile) == NULL_IFILE)
 		quit(QUIT_OK);
-	quit_if_one_screen = FALSE; /* only get one chance at this */
+	quit_if_one_screen = 0; /* only get one chance at this */
 	if (first_cmd_at_prompt != NULL)
 	{
 		ungetsc(first_cmd_at_prompt);
@@ -968,6 +969,7 @@ static void prompt(void)
 #if MSDOS_COMPILER==WIN32C
 	/* 
 	 * In Win32, display the file name in the window title.
+	 * {{ Seems like this should be done in edit_ifile, not on every prompt. }}
 	 */
 	if (!(ch_getflags() & CH_HELPFILE))
 	{
@@ -994,15 +996,14 @@ static void prompt(void)
 	if (!forw_prompt)
 		clear_bot();
 	clear_cmd();
-	forw_prompt = 0;
+	forw_prompt = FALSE;
 	prompt_message();
 	p = pr_string();
 	if (p == NULL || *p == '\0')
 	{
 		p = ":";
 		attr = AT_NORMAL|AT_COLOR_PROMPT;
-	}
-	else
+	} else
 	{
 		attr = AT_STANDOUT|AT_COLOR_PROMPT;
 #if MSDOS_COMPILER==WIN32C
@@ -1015,15 +1016,18 @@ static void prompt(void)
 #if HILITE_SEARCH
 	if (is_filtering())
 	{
-		load_line(p, attr, 2);
-		cmd_putstr("& ");
-	}
-	else
+		constant char *amp = "& ";
+		load_line(p, attr, strlen(amp)+1);
+		putstr(amp);
+	} else
 #endif
-		load_line(p, attr, 0);
+	{
+		load_line(p, attr, 1);
+	}
 	put_line(FALSE);
 	clear_eol();
 	resume_screen();
+	prompting = TRUE;
 }
 
 /*
@@ -1618,7 +1622,6 @@ public void commands(void)
 
 		case A_F_LINE:
 		case A_F_NEWLINE:
-
 			/*
 			 * Forward N (default 1) line.
 			 */

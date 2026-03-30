@@ -34,10 +34,11 @@ extern lbool plusoption;
 extern int swindow;
 extern int sc_width;
 extern int sc_height;
-extern int dohelp;
+extern lbool dohelp;
 extern char openquote;
 extern char closequote;
 extern char *prproto[];
+extern char *eprproto[];
 extern char *eqproto;
 extern char *hproto;
 extern char *wproto;
@@ -90,7 +91,7 @@ extern char ztags[];
 #endif
 #if LESSTEST
 extern constant char *ttyin_name;
-extern int is_tty;
+extern lbool is_tty;
 #endif /*LESSTEST*/
 #if MSDOS_COMPILER
 extern int nm_fg_color, nm_bg_color, nm_attr;
@@ -472,7 +473,49 @@ public void opt__P(int type, constant char *s)
 		break;
 	case QUERY:
 		parg.p_string = prproto[pr_type];
-		error("%s", &parg);
+		switch (pr_type)
+		{
+		case PR_MEDIUM: error("Prompt (medium): %s", &parg);  break;
+		case PR_LONG:   error("Prompt (long): %s", &parg);    break;
+		default:        error("Prompt (short): %s", &parg);   break;
+		}
+		break;
+	}
+}
+
+/*
+ * Handler for --end-prompt option.
+ */
+public void opt_end_prompt(int type, constant char *s)
+{
+	char **pend;
+	PARG parg;
+
+	switch (type)
+	{
+	case INIT:
+	case TOGGLE:
+		switch (*s)
+		{
+		case 's':  pend = &eprproto[PR_SHORT];  s++;    break;
+		case 'm':  pend = &eprproto[PR_MEDIUM]; s++;    break;
+		case 'M':  pend = &eprproto[PR_LONG];   s++;    break;
+		default:   pend = &eprproto[PR_SHORT];          break;
+		}
+		if (*pend != NULL)
+			free(*pend);
+		*pend = save(s);
+		break;
+	case QUERY:
+		parg.p_string = eprproto[pr_type];
+		if (parg.p_string == NULL)
+			parg.p_string = "(nothing)";
+		switch (pr_type)
+		{
+		case PR_MEDIUM: error("Print after medium prompt: %s", &parg);  break;
+		case PR_LONG:   error("Print after long prompt: %s", &parg);    break;
+		default:        error("Print after short prompt: %s", &parg);   break;
+		}
 		break;
 	}
 }
@@ -872,7 +915,7 @@ public void opt_query(int type, constant char *s)
 		error("Use \"h\" for help", NULL_PARG);
 		break;
 	case INIT:
-		dohelp = 1;
+		dohelp = TRUE;
 	}
 }
 
@@ -1361,7 +1404,7 @@ public void opt_ttyin_name(int type, constant char *s)
 	{
 	case INIT:
 		ttyin_name = s;
-		is_tty = 1;
+		is_tty = TRUE;
 		break;
 	}
 }
