@@ -925,6 +925,11 @@ static void prompt(void)
 	char  a[MAX_PATH*2];
 #endif
 
+	/*
+	 * Make sure the screen is displayed.
+	 */
+	make_display();
+
 	if (ungot != NULL && !ungot->ug_end_command)
 	{
 		/*
@@ -934,10 +939,6 @@ static void prompt(void)
 		return;
 	}
 
-	/*
-	 * Make sure the screen is displayed.
-	 */
-	make_display();
 	if (hilite_target)
 		draw_target_attn(TRUE); /* Redraw target line for --hilite-target. */
 	toppos = position(TOP);
@@ -2028,6 +2029,7 @@ public void commands(void)
 			/*
 			 * Clear search string highlighting.
 			 */
+			cmd_exec();
 			undo_search(action == A_CLR_SEARCH);
 			break;
 
@@ -2294,6 +2296,7 @@ public void commands(void)
 			}
 			start_mca(A_SETMARK, "set mark: ", NULL, 0);
 			c = getcc();
+			cmd_exec();
 			if (is_erase_char(c) || is_newline_char(c))
 				break;
 			setmark(c, sindex_offset(action == A_SETMARK, number));
@@ -2306,6 +2309,7 @@ public void commands(void)
 			 */
 			start_mca(A_CLRMARK, "clear mark: ", NULL, 0);
 			c = getcc();
+			cmd_exec();
 			if (is_erase_char(c) || is_newline_char(c))
 				break;
 			clrmark(c);
