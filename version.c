@@ -1091,7 +1091,9 @@ v694  3/24/26   | cmd pipes 1 line if mark is top line; allow numeric arg
                 don't save cleared marks.
 v695            Fix build if tparm doesn't use varargs; fix prompt overflow
                 with & filtering; fix hilite when change -i with & filtering;
-                add --end-prompt; install lessecho in libexecdir.
+                add --end-prompt; install lessecho in libexecdir; change mark
+                cmds to take file line number not screen line; add numeric
+                arg to ' cmd; add %O to prompts.
 */
 
 char version[] = "695x";

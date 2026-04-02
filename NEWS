@@ -24,6 +24,8 @@
 
 * Add -DT option to format tilde lines (github #725).
 
+* Add %O to prompt strings, to replace less safe %o.
+
 * When scrolling past end-of-file or before beginning-of-file,
   stop when exactly one line is left on screen.
 
@@ -34,6 +36,9 @@
 
 * Allow m and M commands to take a numeric argument to specify the
   line to be marked (github #736).
+
+* Allow ' command to take a numeric argument to specify the screen
+  position on which to place the marked line.
 
 * Support POSIX character classes with the built-in V8 regex library
   (github #732).

@@ -232,19 +232,35 @@ public lbool badmark(char c)
 /*
  * Set a user-defined mark.
  */
-public void setmark(char c, int where)
+public void setmark(char c, int where, LINENUM linenum)
 {
 	struct mark *m;
 	struct scrpos scrpos;
+	POSITION pos;
 
 	m = getumark(c);
 	if (m == NULL)
 		return;
-	get_scrpos(&scrpos, where);
-	if (scrpos.pos == NULL_POSITION)
+
+	if (linenum == 0)
 	{
-		lbell();
-		return;
+		get_scrpos(&scrpos, where);
+		if (scrpos.pos == NULL_POSITION)
+		{
+			lbell();
+			return;
+		}
+	} else
+	{
+		pos = find_pos(linenum);
+		if (pos == NULL_POSITION)
+		{
+			PARG parg;
+			parg.p_linenum = linenum;
+			error("Cannot find line number %n", &parg);
+			return;
+		}
+		get_scrpos_pos(&scrpos, where, pos);
 	}
 	cmark(m, curr_ifile, scrpos.pos, scrpos.ln);
 	marks_modified = TRUE;
@@ -297,7 +313,7 @@ public void lastmark(void)
 /*
  * Go to a mark.
  */
-public void gomark(char c)
+public void gomark(char c, int sline)
 {
 	struct mark *m;
 	struct scrpos scrpos;
@@ -305,6 +321,8 @@ public void gomark(char c)
 	m = getmark(c);
 	if (m == NULL)
 		return;
+	if (sline != 0)
+		m->m_scrpos.ln = sline;
 
 	/*
 	 * If we're trying to go to the lastmark and 
