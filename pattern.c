@@ -395,7 +395,7 @@ static lbool match_pattern1(PATTERN_TYPE pattern, constant char *tpattern, const
 #if HAVE_PCRE2
 	{
 		int flags = (notbol) ? PCRE2_NOTBOL : 0;
-		pcre2_match_data *md = pcre2_match_data_create(nsp-1, NULL);
+		pcre2_match_data *md = pcre2_match_data_create_from_pattern(pattern, NULL);
 		int mcount = pcre2_match(pattern, (PCRE2_SPTR)line, line_len,
 			line_off, flags, md, NULL);
 		matched = (mcount > 0);
