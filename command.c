@@ -69,7 +69,7 @@ extern char *osc8_uri;
 extern int shift_count;
 extern lbool forw_prompt;
 extern int incr_search;
-extern int full_screen;
+extern lbool full_screen;
 #if MSDOS_COMPILER==WIN32C
 extern int utf_mode;
 extern unsigned less_acp;
@@ -850,12 +850,6 @@ public int is_screen_trashed(void)
 static void make_display(void)
 {
 	/*
-	 * If not full_screen, we can't rely on scrolling to fill the screen.
-	 * We need to clear and repaint screen before any change.
-	 */
-	if (!full_screen && !(quit_if_one_screen && one_screen))
-		lclear();
-	/*
 	 * If nothing is displayed yet, display starting from initial_scrpos.
 	 */
 	if (empty_screen())
@@ -1382,7 +1376,7 @@ static int forw_loop(int action)
 /*
  * Ignore subsequent (pasted) input chars.
  */
-public void start_ignoring_input()
+public void start_ignoring_input(void)
 {
 	ignoring_input = TRUE;
 #if HAVE_TIME
@@ -1393,7 +1387,7 @@ public void start_ignoring_input()
 /*
  * Stop ignoring input chars.
  */
-public void stop_ignoring_input()
+public void stop_ignoring_input(void)
 {
 	ignoring_input = FALSE;
 	pasting = FALSE;
