@@ -55,7 +55,6 @@ static size_t size_linebuf = 0; /* Size of line buffer (and attr buffer) */
 static struct ansi_state *line_ansi = NULL;
 static lbool ansi_in_line;
 static int ff_starts_line;
-static lbool hlink_in_line;
 static int line_mark_attr;
 static int cshift;   /* Current left-shift of output line buffer */
 public int hshift;   /* Desired left-shift of output line buffer */
@@ -79,12 +78,14 @@ static constant char *mid_ansi_chars;
 static constant char *osc_ansi_chars;
 static int osc_ansi_allow_count;
 static long *osc_ansi_allow;
+static lbool in_osc8_link;
 static lbool in_hilite;
 static lbool clear_after_line;
 
 static int attr_swidth(int a);
 static int attr_ewidth(int a);
 static int do_append(LWCHAR ch, constant char *rep, POSITION pos);
+static void resend_last_ansi(POSITION pos);
 
 extern int sigs;
 extern int bs_mode;
@@ -137,6 +138,7 @@ static struct color_map color_map[] = {
 	{ AT_COLOR_SEARCH,         "kG" },
 	{ AT_COLOR_TILDE,          "-d" },
 	{ AT_COLOR_TARGET,         "-u" },
+	{ AT_COLOR_OSC8,           "-u" },
 	{ AT_COLOR_SUBSEARCH(1),   "ky" },
 	{ AT_COLOR_SUBSEARCH(2),   "wb" },
 	{ AT_COLOR_SUBSEARCH(3),   "YM" },
@@ -293,8 +295,15 @@ public void prewind(lbool contig)
 	int ax;
 
 	xbuf_reset(&shifted_ansi);
-	if (contig && linebuf.prev_end != 0)
-		pshift(linebuf.prev_end);
+	if (contig)
+	{
+		if (linebuf.prev_end != 0)
+			pshift(linebuf.prev_end);
+		/* Don't reset in_osc8_link, since we may be in a wrapped OSC 8 sequence. */
+	} else
+	{
+		in_osc8_link = FALSE;
+	}
 	linebuf.print = 6; /* big enough for longest UTF-8 sequence */
 	linebuf.pfx_end = 0;
 	for (linebuf.end = 0; linebuf.end < linebuf.print; linebuf.end++)
@@ -315,7 +324,6 @@ public void prewind(lbool contig)
 	in_hilite = FALSE;
 	ansi_in_line = FALSE;
 	ff_starts_line = -1;
-	hlink_in_line = FALSE;
 	clear_after_line = FALSE;
 	line_mark_attr = 0;
 	line_pos = NULL_POSITION;
@@ -397,21 +405,18 @@ public void plinestart(POSITION pos)
 		 */
 		linenum = find_linenum(pos);
 	}
+	linebuf.pfx_end = 0;
 
 	/*
 	 * Display a status column if the -J option is set.
 	 */
 	if (status_col || status_line)
 	{
-		char c = posmark(pos);
-		if (c != 0)
-			line_mark_attr = AT_HILITE|AT_COLOR_MARK;
-		else if (start_attnpos != NULL_POSITION &&
+		if (start_attnpos != NULL_POSITION &&
 		         pos >= start_attnpos && pos <= end_attnpos)
 			line_mark_attr = AT_HILITE|AT_COLOR_ATTN;
 		if (status_col)
 		{
-			add_pfx(c ? c : ' ', line_mark_attr); /* column 0: status */
 			while (linebuf.pfx_end < (size_t) status_col_width) /*{{type-issue}}*/
 				add_pfx(' ', AT_NORMAL);
 		}
@@ -691,7 +696,7 @@ public struct ansi_state * ansi_start(LWCHAR ch)
 static lbool valid_osc_intro(char ch, lbool content)
 {
 	constant char *p = strchr(osc_ansi_chars, ch);
-	if (p == NULL)
+	if (p == NULL || *p == '\0')
 		return FALSE;
 	return (!content || p[1] == '*');
 }
@@ -763,7 +768,7 @@ static ansi_state ansi_step2(struct ansi_state *pansi, LWCHAR ch, lbool content)
 			return osc_return(pansi, (pansi->otype == 8) ? OSC8_PARAMS : OSC_STRING, ANSI_MID);
 		/* OSC is untyped */
 		if (IS_CSI_START(ch))
-			return osc_return(pansi, OSC_END_CSI, ANSI_MID);
+			return osc_return(pansi, OSC_STRING_CSI, ANSI_MID);
 		if (ch == '\7')
 			return osc_return(pansi, OSC_END, ANSI_END);
 		return osc_return(pansi, OSC_STRING, ANSI_MID);
@@ -779,16 +784,18 @@ static ansi_state ansi_step2(struct ansi_state *pansi, LWCHAR ch, lbool content)
 		if (IS_CSI_START(ch))
 		{
 			pansi->escs_in_seq++;
-			return osc_return(pansi, OSC_END_CSI, ANSI_MID);
+			return osc_return(pansi,
+					pansi->ostate == OSC8_URI ? OSC8_URI_CSI : OSC_STRING_CSI, ANSI_MID);
 		}
 		/* Stay in same ostate */
 		return ANSI_MID;
-	case OSC_END_CSI:
+	case OSC8_URI_CSI:
+	case OSC_STRING_CSI:
 		/* Got ESC of ST, expect backslash next. */
 		if (ch == '\\')
 			return osc_return(pansi, OSC_END, valid_osc_type(pansi->otype, content) ? ANSI_END : ANSI_ERR);
 		/* ESC not followed by backslash. */
-		return osc_return(pansi, OSC_STRING, ANSI_MID);
+		return osc_return(pansi, pansi->ostate == OSC8_URI_CSI ? OSC8_URI : OSC_STRING, ANSI_MID);
 	case OSC_END:
 		return ANSI_END;
 	case OSC8_NOT:
@@ -859,14 +866,19 @@ static int store_char(LWCHAR ch, int a, constant char *rep, POSITION pos)
 #if HILITE_SEARCH
 	{
 		int matches;
-		int resend_last = 0;
 		int hl_attr = 0;
+		int link_attr = 0;
 
 		if (pos != NULL_POSITION && a != AT_ANSI)
 		{
 			hl_attr = is_hilited_attr(pos, pos+1, 0, &matches);
-			if (hl_attr == 0 && status_line)
-				hl_attr = line_mark_attr;
+			if (in_osc8_link)
+			{
+				if (hl_attr != 0)
+					link_attr = hl_attr | AT_UNDERLINE;
+				else
+					link_attr = use_color ? AT_COLOR_OSC8 : AT_UNDERLINE;
+			}
 		}
 		if (hl_attr)
 		{
@@ -880,24 +892,15 @@ static int store_char(LWCHAR ch, int a, constant char *rep, POSITION pos)
 			in_hilite = TRUE;
 		} else 
 		{
+			a |= link_attr;
 			if (in_hilite)
 			{
 				/*
 				 * This is the first non-hilited char after a hilite.
-				 * Resend the last ANSI seq to restore color.
+				 * Resend the last ANSI sequence(s) to restore color.
 				 */
-				resend_last = 1;
-			}
-			in_hilite = FALSE;
-		}
-		if (resend_last)
-		{
-			int ai;
-			for (ai = 0;  ai < NUM_LAST_ANSIS;  ai++)
-			{
-				int ax = (curr_last_ansi + ai) % NUM_LAST_ANSIS;
-				for (i = 0;  i < last_ansis[ax].end;  i++)
-					STORE_CHAR(last_ansis[ax].data[i], AT_ANSI, NULL, pos);
+				in_hilite = FALSE;
+				resend_last_ansi(pos);
 			}
 		}
 	}
@@ -998,6 +1001,15 @@ static int store_char(LWCHAR ch, int a, constant char *rep, POSITION pos)
 			}
 		}
 	}
+	if (status_col && pos != NULL_POSITION)
+	{
+		char c = posmark(pos);
+		if (c != '\0')
+		{
+			line_mark_attr = AT_HILITE|AT_COLOR_MARK;
+			set_status_col(c, line_mark_attr);
+		}
+	}
 	return (0);
 }
 
@@ -1067,7 +1079,7 @@ static int flush_mbc_buf(POSITION pos)
 	int i;
 
 	for (i = 0; i < mbc_buf_index; i++)
-		if (store_prchar((LWCHAR) mbc_buf[i], pos))
+		if (store_prchar((LWCHAR) (unsigned char) mbc_buf[i], pos))
 			return mbc_buf_index - i;
 	return 0;
 }
@@ -1194,41 +1206,56 @@ static int store_control_char(LWCHAR ch, constant char *rep, POSITION pos)
 	return (0);
 }
 
+/*
+ * Remove invalid ANSI sequence.
+ */
+static void remove_ansi(void)
+{
+	constant char *start = (cshift < hshift) ? xbuf_char_data(&shifted_ansi): linebuf.buf;
+	size_t *end = (cshift < hshift) ? &shifted_ansi.end : &linebuf.end;
+	constant char *p = start + *end;
+	LWCHAR bch;
+	do {
+		bch = step_charc(&p, -1, start);
+	} while (p > start && (!IS_CSI_START(bch) || line_ansi->escs_in_seq-- > 0));
+	*end = ptr_diff(p, start);
+	xbuf_reset(&last_ansi);
+}
+
 static int store_ansi(LWCHAR ch, constant char *rep, POSITION pos)
 {
+	osc8_state prev_ostate = ansi_osc8_state(line_ansi);
 	switch (ansi_step2(line_ansi, ch, pos != NULL_POSITION))
 	{
-	case ANSI_MID:
+	case ANSI_MID: {
 		STORE_CHAR(ch, AT_ANSI, rep, pos);
 		switch (ansi_osc8_state(line_ansi))
 		{
-		case OSC_TYPENUM: case OSC_STRING: hlink_in_line = TRUE; break;
+		case OSC8_PARAMS: in_osc8_link = FALSE; break;
+		case OSC8_URI: if (prev_ostate == OSC8_URI) in_osc8_link = TRUE; break;
 		default: break;
 		}
 		xbuf_add_char(&last_ansi, (char) ch);
-		break;
+		break; }
 	case ANSI_END:
 		STORE_CHAR(ch, AT_ANSI, rep, pos);
-		ansi_done(line_ansi);
-		line_ansi = NULL;
-		xbuf_add_char(&last_ansi, (char) ch);
-		xbuf_set(&last_ansis[curr_last_ansi], &last_ansi);
-		xbuf_reset(&last_ansi);
-		curr_last_ansi = (curr_last_ansi + 1) % NUM_LAST_ANSIS;
-		break;
-	case ANSI_ERR:
+		/* Save the ANSI sequence, in case we need to resend it.
+		 * But don't save OSC 8 sequences; they never need to be resent. */
+		if (ansi_osc8_state(line_ansi) == OSC_START)
 		{
-			/* Remove whole unrecognized sequence.  */
-			constant char *start = (cshift < hshift) ? xbuf_char_data(&shifted_ansi): linebuf.buf;
-			size_t *end = (cshift < hshift) ? &shifted_ansi.end : &linebuf.end;
-			constant char *p = start + *end;
-			LWCHAR bch;
-			do {
-				bch = step_charc(&p, -1, start);
-			} while (p > start && (!IS_CSI_START(bch) || line_ansi->escs_in_seq-- > 0));
-			*end = ptr_diff(p, start);
+			xbuf_add_char(&last_ansi, (char) ch);
+			xbuf_set(&last_ansis[curr_last_ansi], &last_ansi);
+			curr_last_ansi = (curr_last_ansi + 1) % NUM_LAST_ANSIS;
 		}
 		xbuf_reset(&last_ansi);
+		ansi_done(line_ansi);
+		line_ansi = NULL;
+		/* After ending an OSC 8 sequence, resend the last SGR sequence to restore color. */
+		if (prev_ostate != OSC_START)
+			resend_last_ansi(pos);
+		break;
+	case ANSI_ERR:
+		remove_ansi();
 		ansi_done(line_ansi);
 		line_ansi = NULL;
 		break;
@@ -1237,6 +1264,22 @@ static int store_ansi(LWCHAR ch, constant char *rep, POSITION pos)
 	}
 	return (0);
 } 
+
+/*
+ * Resend the last ANSI sequence(s) to restore color after we have temporarily
+ * overridden the color with a hilite or OSC 8 link.
+ */
+static void resend_last_ansi(POSITION pos)
+{
+	int ai;
+	for (ai = 0;  ai < NUM_LAST_ANSIS;  ai++)
+	{
+		int ax = (curr_last_ansi + ai) % NUM_LAST_ANSIS;
+		size_t i;
+		for (i = 0;  i < last_ansis[ax].end;  i++)
+			store_char(last_ansis[ax].data[i], AT_ANSI, NULL, pos);
+	}
+}
 
 static int store_bs(LWCHAR ch, constant char *rep, POSITION pos)
 {
@@ -1390,13 +1433,12 @@ static void add_attr_normal(void)
 	{
 		switch (line_ansi->ostate)
 		{
-		case OSC_TYPENUM:
-		case OSC8_PARAMS:
-		case OSC8_URI:
-		case OSC_STRING:
-			addstr_linebuf("\033\\", AT_ANSI, 0);
+		case OSC_START:
+		case OSC_END:
 			break;
 		default:
+			/* We're in an unterminated OSC sequence; remove it. */
+			remove_ansi();
 			break;
 		}
 		ansi_done(line_ansi);
@@ -1405,7 +1447,7 @@ static void add_attr_normal(void)
 	if (ctldisp != OPT_ONPLUS || !is_ansi_end('m'))
 		return;
 	addstr_linebuf("\033[m", AT_ANSI, 0);
-	if (hlink_in_line) /* Don't send hyperlink clear if we know we don't need to. */
+	if (in_osc8_link) /* Don't send hyperlink clear if we know we don't need to. */
 		addstr_linebuf("\033]8;;\033\\", AT_ANSI, 0);
 }
 
@@ -1467,6 +1509,7 @@ public void pdone(lbool endline, lbool chopped, lbool forw, lbool full_pad)
 	if (status_line && (line_mark_attr != 0 || full_pad)) {
 		while (end_column < sc_width + cshift)
 			add_linebuf(' ', line_mark_attr, 1);
+		set_attr_line(line_mark_attr);
 	}
 
 	/*

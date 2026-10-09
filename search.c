@@ -47,7 +47,7 @@ extern LWCHAR rscroll_char;
 #if HILITE_SEARCH
 extern int hilite_search;
 extern lbool squished;
-extern int can_goto_line;
+extern lbool can_goto_line;
 static lbool hide_hilite;
 static POSITION prep_startpos;
 static POSITION prep_endpos;
@@ -57,15 +57,14 @@ public lbool search_wrapped = FALSE;
 public POSITION search_incr_start = NULL_POSITION;
 #if OSC8_LINK
 public POSITION osc8_linepos = NULL_POSITION;
-public POSITION osc8_match_start = NULL_POSITION;
-public POSITION osc8_match_end = NULL_POSITION;
-public POSITION osc8_params_start = NULL_POSITION;
-public POSITION osc8_params_end = NULL_POSITION;
-public POSITION osc8_uri_start = NULL_POSITION;
-public POSITION osc8_uri_end = NULL_POSITION;
-public POSITION osc8_text_start = NULL_POSITION;
-public POSITION osc8_text_end = NULL_POSITION;
-char *osc8_path = NULL;
+static POSITION osc8_match_start = NULL_POSITION;
+static POSITION osc8_match_end = NULL_POSITION;
+static POSITION osc8_params_start = NULL_POSITION;
+static POSITION osc8_params_end = NULL_POSITION;
+static POSITION osc8_uri_start = NULL_POSITION;
+static POSITION osc8_uri_end = NULL_POSITION;
+static POSITION osc8_text_start = NULL_POSITION;
+static POSITION osc8_text_end = NULL_POSITION;
 char *osc8_uri = NULL;
 constant char *osc8_search_param = NULL;
 #endif
@@ -99,7 +98,7 @@ struct hilite_node
 	struct hilite_node *right;
 	struct hilite_node *prev;
 	struct hilite_node *next;
-	int red;
+	lbool red;
 	struct hilite r;
 };
 struct hilite_storage
@@ -188,20 +187,19 @@ static int set_pattern(struct pattern_info *info, constant char *pattern, int se
 	info->is_ucase_pattern = (pattern == NULL) ? FALSE : is_ucase(pattern);
 	is_caseless = (info->is_ucase_pattern && caseless != OPT_ONPLUS) ? 0 : caseless;
 #if !NO_REGEX
-	if (pattern == NULL)
-		SET_NULL_PATTERN(info->compiled);
-	else if (compile_pattern(pattern, search_type, show_error, &info->compiled) < 0)
-		return -1;
+	uncompile_pattern(&info->compiled);
+	if (pattern != NULL)
+	{
+		if (compile_pattern(pattern, search_type, show_error, &info->compiled) < 0)
+			return -1;
+	}
 #endif
 	/* Pattern compiled successfully; save the text too. */
 	if (info->text != NULL)
 		free(info->text);
 	info->text = NULL;
 	if (pattern != NULL)
-	{
-		info->text = (char *) ecalloc(1, strlen(pattern)+1);
-		strcpy(info->text, pattern);
-	}
+		info->text = save(pattern);
 	info->search_type = search_type;
 	return 0;
 }
@@ -346,7 +344,7 @@ public void clear_attn(void)
 	POSITION old_end_attnpos;
 	POSITION pos;
 	POSITION epos;
-	int moved = 0;
+	lbool moved = FALSE;
 
 	if (hilite_target)
 		draw_target_attn(FALSE);
@@ -378,11 +376,11 @@ public void clear_attn(void)
 			goto_line(sindex);
 			clear_eol();
 			put_line(FALSE);
-			moved = 1;
+			moved = TRUE;
 		}
 	}
 	if (overlay_header())
-		moved = 1;
+		moved = TRUE;
 	if (moved)
 		lower_left();
 #endif
@@ -405,7 +403,7 @@ public void undo_search(lbool clear)
 		if (has_pattern)
 			hide_hilite = !hide_hilite;
 		else if (!osc8_active)
-			error("No previous regular expression", NULL_PARG);
+			error(LM(No_previous_regular_expression), NULL_PARG);
 	}
 	repaint_hilite(TRUE);
 #else
@@ -430,7 +428,7 @@ public lbool undo_osc8(void)
 /*
  * Clear the hilite list.
  */
-public void clr_hlist(struct hilite_tree *anchor)
+static void clr_hlist(struct hilite_tree *anchor)
 {
 	struct hilite_storage *hls;
 	struct hilite_storage *nexthls;
@@ -473,7 +471,7 @@ static struct hilite_node* hlist_find(struct hilite_tree *anchor, POSITION pos)
 	if (anchor->lookaside)
 	{
 		int steps = 0;
-		int hit = 0;
+		lbool hit = FALSE;
 
 		n = anchor->lookaside;
 
@@ -483,13 +481,13 @@ static struct hilite_node* hlist_find(struct hilite_tree *anchor, POSITION pos)
 			{
 				if (n->prev == NULL || pos >= n->prev->r.hl_endpos)
 				{
-					hit = 1;
+					hit = TRUE;
 					break;
 				}
 			} else if (n->next == NULL)
 			{
 				n = NULL;
-				hit = 1;
+				hit = TRUE;
 				break;
 			}
 
@@ -685,7 +683,7 @@ public int is_hilited_attr(POSITION pos, POSITION epos, int nohide, int *p_match
 #if OSC8_LINK
 	if (osc8_linepos != NULL_POSITION && 
 			pos < osc8_text_end && (epos == NULL_POSITION || epos > osc8_text_start))
-		return (AT_HILITE|AT_COLOR_SEARCH);
+		return (AT_HILITE|AT_UNDERLINE|AT_COLOR_SEARCH);
 #endif
 
 	attr = hilited_range_attr(pos, epos);
@@ -920,7 +918,7 @@ static void add_hilite(struct hilite_tree *anchor, struct hilite *hl)
 		p->next = n;
 	}
 	n->parent = p;
-	n->red = 1;
+	n->red = TRUE;
 	n->r = *hl;
 
 	/*
@@ -933,7 +931,7 @@ static void add_hilite(struct hilite_tree *anchor, struct hilite *hl)
 		/* case 1 - current is root, root is always black */
 		if (n->parent == NULL)
 		{
-			n->red = 0;
+			n->red = FALSE;
 			break;
 		}
 
@@ -956,10 +954,10 @@ static void add_hilite(struct hilite_tree *anchor, struct hilite *hl)
 			u = n->parent->parent->right;
 		if (u != NULL && u->red)
 		{
-			n->parent->red = 0;
-			u->red = 0;
+			n->parent->red = FALSE;
+			u->red = FALSE;
 			n = n->parent->parent;
-			n->red = 1;
+			n->red = TRUE;
 			continue;
 		}
 
@@ -986,8 +984,8 @@ static void add_hilite(struct hilite_tree *anchor, struct hilite *hl)
 		 * case 5 - parent is red but uncle is black, parent and
 		 * grandparent on same side
 		 */
-		n->parent->red = 0;
-		n->parent->parent->red = 1;
+		n->parent->red = FALSE;
+		n->parent->parent->red = TRUE;
 		if (n == n->parent->left)
 			hlist_rotate_right(anchor, n->parent->parent);
 		else
@@ -1087,7 +1085,9 @@ static void hilite_line(POSITION linepos, constant char *line, size_t line_len, 
 		else /* end of line */
 			break;
 	} while (match_pattern(info_compiled(&search_info), search_info.text,
-			line, line_len, line_off, sp, ep, nsp, 1, search_info.search_type));
+			line, line_len, line_off, sp, ep, nsp, 1,
+			search_info.search_type & ~SRCH_SUBSEARCH_ALL));
+
 }
 #endif
 
@@ -1317,7 +1317,7 @@ static lbool osc8_parse(constant char *line, constant char *line_end, struct osc
 				pop->uri_start = line;
 			}
 			break;
-		case OSC_END_CSI:
+		case OSC8_URI_CSI:
 			if (pop->uri_end == NULL)
 				pop->uri_end = oline;
 			break;
@@ -1353,8 +1353,8 @@ static lbool osc8_param_match(POSITION linepos, constant char *line, constant st
 
 	if (clickpos != NULL_POSITION)
 	{
-		return clickpos >= linepos + ptr_diff(op1->osc8_start, line) &&
-		       clickpos < linepos + ptr_diff(op2->osc8_end, line);
+		return clickpos >= linepos + (POSITION) ptr_diff(op1->osc8_start, line) &&
+		       clickpos < linepos + (POSITION) ptr_diff(op2->osc8_end, line);
 	}
 	if (param == NULL)
 		return TRUE;
@@ -1447,7 +1447,7 @@ static osc8_match osc8_search_line1(int search_type, POSITION linepos, POSITION 
 		/* Don't set osc8 globals if we're just searching for a parameter. */
 		return OSC8_MATCH;
 
-	if (osc8_linepos == linepos && osc8_match_start == spos + ptr_diff(op1.osc8_start, line))
+	if (osc8_linepos == linepos && osc8_match_start == spos + (POSITION) ptr_diff(op1.osc8_start, line))
 		return OSC8_ALREADY; /* already selected */
 
 	osc8_linepos = linepos;
@@ -1820,7 +1820,7 @@ public void osc8_search(int search_type, constant char *param, int matches)
 		pos = search_pos(search_type);
 	if (pos == NULL_POSITION)
 	{
-		error("Nothing to search", NULL_PARG);
+		error(LM(Nothing_to_search), NULL_PARG);
 		return;
 	}
 	osc8_search_param = param;
@@ -1828,7 +1828,7 @@ public void osc8_search(int search_type, constant char *param, int matches)
 	osc8_search_param = NULL;
 	if (match != 0)
 	{
-		error("OSC 8 link not found", NULL_PARG);
+		error(LM(OSC_8_link_not_found), NULL_PARG);
 		return;
 	}
 	/* If new link is on screen, just highlight it without scrolling. */
@@ -1857,6 +1857,7 @@ public lbool osc8_click(int sindex, int col)
 	clickpos = pos_from_col(linepos, col, NULL_POSITION, -1);
 	if (clickpos == NULL_POSITION)
 		return FALSE;
+	linepos = beginning_of_line(linepos);
 	if (forw_raw_line(linepos, &line, &line_len) == NULL_POSITION)
 		return FALSE;
 	r = osc8_search_line(SRCH_FORW|SRCH_OSC8, linepos, line, line_len, NULL, clickpos, &matches);
@@ -1917,22 +1918,25 @@ public void osc8_open(void)
 	char env_name[64];
 	size_t scheme_len;
 	constant char *handler;
+	char *cmd;
+	char *uri_q;
 	size_t uri_len;
+	char *p;
 	static constant char *env_name_pfx = "LESS_OSC8_OPEN_";
 
 	if (osc8_linepos == NULL_POSITION)
 	{
-		error("No OSC8 link selected", NULL_PARG);
+		error(LM(No_OSC8_link_selected), NULL_PARG);
 		return;
 	}
 	if (!osc8_read_selected(&op))
 	{
-		error("Cannot find OSC8 link", NULL_PARG);
+		error(LM(Cannot_find_OSC8_link), NULL_PARG);
 		return;
 	}
 	/*
 	 * Read a "handler" shell cmd from environment variable "LESS_OSC8_OPEN_scheme".
-	 * pr_expand the handler cmd (to expand %O -> osc8_path) and execute it.
+	 * Append the URI to the handler as an argument, and execute it.
 	 */
 	uri_len = ptr_diff(op.uri_end, op.uri_start);
 	scheme_len = scheme_length(op.uri_start, uri_len);
@@ -1947,7 +1951,16 @@ public void osc8_open(void)
 		free(param);
 		return;
 	}
-	SNPRINTF3(env_name, sizeof(env_name), "%s%.*s", env_name_pfx, (int) scheme_len, op.uri_start);
+	if (scheme_len == 0)
+	{
+		SNPRINTF1(env_name, sizeof(env_name), "%sNONE", env_name_pfx);
+	} else
+	{
+		SNPRINTF3(env_name, sizeof(env_name), "%s%.*s", env_name_pfx, (int) scheme_len, op.uri_start);
+		for (p = &env_name[strlen(env_name_pfx)];  *p != '\0';  p++)
+			if (ASCII_IS_UPPER(*p))
+				*p = ASCII_TO_LOWER(*p);
+	}
 	handler = lgetenv(env_name);
 	if (isnullenv(handler) || strcmp(handler, "-") == 0)
 		handler = lgetenv("LESS_OSC8_OPEN_ANY");
@@ -1955,29 +1968,33 @@ public void osc8_open(void)
 	{
 		PARG parg;
 		parg.p_string = env_name + strlen(env_name_pfx); /* {{ tricky }} */
-		error("No handler for \"%s\" link type", &parg);
+		error(LM(No_handler_for_X_link_type), &parg);
 		return;
 	}
-	/* {{ ugly global osc8_path }} */
-	osc8_path = saven(op.uri_start, uri_len);
-	handler = pr_expand(handler);
-	free(osc8_path);
-	osc8_path = NULL;
-
+	uri_q = shell_quoten(op.uri_start, uri_len);
+	if (uri_q == NULL)
 	{
-		constant char *cmd = handler;
-		constant char *done_msg = "link done";
+		error(LM(Cannot_quote_URI), NULL_PARG);
+		return;
+	}
+	cmd = ecalloc(strlen(handler) + strlen(uri_q) + 2, sizeof(char));
+	sprintf(cmd, "%s %s", handler, uri_q);
+	free(uri_q);
+	{
+		constant char *exec_cmd = cmd;
+		constant char *done_msg = LM(link_done);
 		POSITION save_osc8_linepos = osc8_linepos;
-		if (*cmd == CONTROL('P'))
+		if (*exec_cmd == CONTROL('P'))
 		{
 			done_msg = NULL;
-			cmd++;
+			exec_cmd++;
 		}
-		lsystem(cmd, done_msg);
+		lsystem(exec_cmd, done_msg);
 		/* lsystem reedits the input file which clears the selected
 		 * OSC8 link, so restore it. */
 		osc8_linepos = save_osc8_linepos;
 	}
+	free(cmd);
 }
 
 /*
@@ -1987,7 +2004,7 @@ public void osc8_jump(void)
 {
 	if (osc8_linepos == NULL_POSITION)
 	{
-		error("No OSC8 link selected", NULL_PARG);
+		error(LM(No_OSC8_link_selected), NULL_PARG);
 		return;
 	}
 	jump_loc(osc8_linepos, jump_sline);
@@ -2079,14 +2096,14 @@ public int search(int search_type, constant char *pattern, int n)
 		{
 			int r = hist_pattern(search_type);
 			if (r == 0)
-				error("No previous regular expression", NULL_PARG);
+				error(LM(No_previous_regular_expression), NULL_PARG);
 			if (r <= 0)
 				return (-1);
 		}
 		if ((search_type & SRCH_NO_REGEX) != 
 		      (search_info.search_type & SRCH_NO_REGEX))
 		{
-			error("Please re-enter search pattern", NULL_PARG);
+			error(LM(Please_re_enter_search_pattern), NULL_PARG);
 			return -1;
 		}
 #if HILITE_SEARCH
@@ -2156,7 +2173,7 @@ public int search(int search_type, constant char *pattern, int n)
 		if (hilite_search == OPT_ON || status_col)
 			repaint_hilite(TRUE);
 #endif
-		error("Nothing to search", NULL_PARG);
+		error(LM(Nothing_to_search), NULL_PARG);
 		return (-1);
 	}
 

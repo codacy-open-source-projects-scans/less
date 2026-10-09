@@ -16,6 +16,7 @@
 #if OS2
 #include "cmd.h"
 #include "pckeys.h"
+#include <emx/syscalls.h>
 #endif
 #if MSDOS_COMPILER==WIN32C
 #define WIN32_LEAN_AND_MEAN
@@ -52,7 +53,7 @@ static int open_tty_device(constant char* dev)
 {
 #if OS2
 	/* The __open() system call translates "/dev/tty" to "con". */
-	return __open(dev, OPEN_READ);
+	return __open(dev, OPEN_READ, 0);
 #else
 	return open(dev, OPEN_READ);
 #endif
@@ -75,6 +76,11 @@ public int open_tty(void)
 			fd = 0; /* assume lesstest uses stdin */
 	}
 #endif /*LESSTEST*/
+#ifndef __APPLE__
+	/* MacOS does not support poll() on /dev/tty, so prefer ttyname(2). */
+	if (fd < 0)
+		fd = open_tty_device("/dev/tty");
+#endif
 #if HAVE_TTYNAME
 	if (fd < 0)
 	{
@@ -83,8 +89,10 @@ public int open_tty(void)
 			fd = open_tty_device(dev);
 	}
 #endif
+#ifdef __APPLE__
 	if (fd < 0)
 		fd = open_tty_device("/dev/tty");
+#endif
 	if (fd < 0)
 		fd = 2;
 #ifdef __MVS__
@@ -165,6 +173,19 @@ public int pclose(FILE *f)
 }
 #endif
 
+#if MSDOS_COMPILER==MSOFTC
+/*
+ * The Microsoft C DOS runtime doesn't have popen/pclose. Should never be called
+ * as call sites are either excluded during pre-processing via HAVE_POPEN or are
+ * in unreachable code. The alternative is introducing even more #if statements.
+ * Without this stub function linking will fail as the symbol can't be resolved.
+ */
+public int pclose(FILE *f)
+{
+	return fclose(f);
+}
+#endif
+
 /*
  * Get the number of lines to scroll when mouse wheel is moved.
  */
@@ -184,7 +205,7 @@ public int default_wheel_lines(void)
 /*
  * Get a character from the keyboard.
  */
-public int getchr(void)
+public int getchr_timeout(unsigned long timeout_ms)
 {
 	char c;
 	ssize_t result;
@@ -211,11 +232,28 @@ public int getchr(void)
 #else /* LESS_IREAD_TTY */
 		{
 			unsigned char uc;
+			if (timeout_ms > 0)
+				set_mstimer(timeout_ms); /* set timer */
 			result = iread(tty, &uc, sizeof(char));
+			if (timeout_ms > 0)
+				set_mstimer(0); /* cancel timer */
+			if (sigs & S_TIMER)
+			{
+				sigs &= ~S_TIMER;
+				return (READ_TIMEOUT);
+			}
 			c = (char) uc;
 		}
 		if (result == READ_INTR)
 			return (READ_INTR);
+		if (result == 0)
+		{
+			/*
+			 * EOF on the tty means there is no more keyboard input.
+			 * Don't loop forever waiting for a byte which cannot arrive.
+			 */
+			quit(QUIT_ERROR);
+		}
 		if (result < 0)
 		{
 			/*
@@ -275,4 +313,9 @@ public int getchr(void)
 	} while (result != 1);
 
 	return (unsigned char) c;
+}
+
+public int getchr(void)
+{
+	return getchr_timeout(0);
 }

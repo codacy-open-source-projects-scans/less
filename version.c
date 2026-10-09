@@ -1102,7 +1102,39 @@ v697  4/19/26   Fix bug using PCRE2 with more than 5 parentheses; discard
 v698  4/23/26   Fix bad display after message in narrow terminal; replace
                 LESS_OSC8_xxx with LESS_OSC8_OPEN_xxx; add \kpe to lesskey.
 v699  4/23/26   Add less-osc8-*.bash files to distribution.
-v700
+v700  4/30/26   Add \kpe to lesskey; improve less-osc8-* scripts.
+v701  5/13/26   Replace less-osc-*.bash with less-osc8-open.sh; don't init
+                terminal if stdout is not tty; fix bug clicking OSC 8 link
+                in a long line; fix misread chars on Windows; remove %O.
+v702  5/22/26   Doc.
+v703  5/30/26   Fix handling unsafe man options in OSC 8 link; fix unsafe
+                handling of unterminated OSC seq; shell-escape expansion
+                of % and #.
+v704  5/30/26   Fix uninstall target in Makefile.
+v705  6/15/26   Fix bug overriding built-in command.
+v706  6/22/26   Add ^ and + modifiers for \k in lesskey file; support ctl 
+                and shift up/down arrows; add -DO; add LESSSECURE_DISALLOW;
+                add LESS_SHELL_COPTION; add %G,%y,%% in prompts; underline
+                OSC 8 links; use separate names for lesstest executable;
+                add getenv cache; improve error handling for bad lesskey files
+                and bad OSC 8 links; remove lesskey program.
+v707  7/16/26   Don't let ' with numeric arg modify the mark; add || cmd;
+                allow ^N to enter line number in pipe cmd; add LESSMSG.
+v708  7/16/26   Merge.
+v709  8/15/26   Fix --rscroll with non-ASCII char; fix exit with invalid TERM;
+                fix crash with :e# after :d; fix loop if invalid option in
+                LESS_UNSUPPORT; fix crash with initial !!; allow shell cmd
+                starting with '!'; add ESC-]; support shift/ctl page up/down;
+                fix search ^S bugs; fix display issues with less_printf.
+v710  9/8/26    Fix string overrrun if input contains "\e\0"; fix memory leak
+                when using ${...} in lesskey file; fix status column when long
+                line is marked.
+v711            Improve builds for MS-DOS and OS/2; fix redirected stderr;
+                disallow -t with LESSSECURE; don't clear screen on ^C;
+                fix invalid lesskey file name on OS/2; add INSERT mode;
+                add lesskey support for shift/ctrl INSERT; remove support
+                for binary lesskey file; make word-erase char work; improve
+                mapping of ESC; fix bug with wrapped colored text.
 */
 
-char version[] = "700x";
+char version[] = "711x";

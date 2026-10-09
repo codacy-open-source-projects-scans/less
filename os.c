@@ -29,6 +29,9 @@
 #if HAVE_TIME_H
 #include <time.h>
 #endif
+#if HAVE_SYS_TIME_H
+#include <sys/time.h>
+#endif
 #if HAVE_ERRNO_H
 #include <errno.h>
 #endif
@@ -37,10 +40,6 @@ extern int errno;
 #endif
 #if HAVE_VALUES_H
 #include <values.h>
-#endif
-
-#if defined(__APPLE__)
-#include <sys/utsname.h>
 #endif
 
 #if HAVE_POLL && !MSDOS_COMPILER && !defined(__MVS__)
@@ -85,7 +84,7 @@ public lbool getting_one_screen = FALSE;
 /* Milliseconds to wait for data before displaying "waiting for data" message. */
 static int waiting_for_data_delay = 4000;
 /* Max milliseconds expected to "normally" read and display a screen of text. */
-public int screenfill_ms = 3000;
+static int screenfill_ms = 3000;
 
 static JUMP_BUF read_label;
 static JUMP_BUF open_label;
@@ -116,14 +115,6 @@ public void init_poll(void)
 	idelay = (delay == NULL) ? 0 : atoi(delay);
 	if (idelay > 0)
 		screenfill_ms = idelay;
-#if USE_POLL
-#if defined(__APPLE__)
-	/* In old versions of MacOS, poll() does not work with /dev/tty. */
-	struct utsname uts;
-	if (uname(&uts) < 0 || lstrtoi(uts.release, NULL, 10) < 20)
-		use_poll = FALSE;
-#endif
-#endif
 }
 
 #if USE_POLL
@@ -610,8 +601,28 @@ public void sleep_ms(int ms)
 #if HAVE_USLEEP
 	usleep(ms * 1000);
 #else
+#if MSDOS_COMPILER==MSOFTC
+	/* The MSVC DOS runtime doesn't implement POSIX sleep(). */
+	clock_t end = clock() + (clock_t) ms * CLOCKS_PER_SEC / 1000;
+	while (clock() < end) ;
+#else
 	sleep(ms / 1000 + (ms % 1000 != 0));
 #endif
 #endif
+#endif
+#endif
+}
+
+/*
+ * Set a timer to send SIGALRM after the specified number of milliseconds.
+ */
+public void set_mstimer(unsigned long ms)
+{
+#if HAVE_SETITIMER
+	struct itimerval timer;
+	timer.it_value.tv_sec = ms / 1000;
+	timer.it_value.tv_usec = (ms % 1000) * 1000;
+	timer.it_interval.tv_sec = timer.it_interval.tv_usec = 0;
+	setitimer(ITIMER_REAL, &timer, NULL);
 #endif
 }

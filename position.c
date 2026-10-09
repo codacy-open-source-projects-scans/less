@@ -173,8 +173,8 @@ public lbool empty_lines(int s, int e)
 public void get_scrpos_pos(struct scrpos *scrpos, int where, POSITION pos)
 {
 	int i;
-	int dir;
-	int last;
+	int dir = 0; /* Silence warning on older gcc versions */
+	int last = 0; /* Silence warning on older gcc versions */
 
 	switch (where)
 	{
@@ -291,7 +291,7 @@ static int pos_shift(POSITION linepos, size_t choff)
  * Return the position of the first char of the line containing tpos.
  * Thus if tpos is the first char of its line, just return tpos.
  */
-static POSITION beginning_of_line(POSITION tpos)
+public POSITION beginning_of_line(POSITION tpos)
 {
 	ch_seek(tpos);
 	while (ch_tell() != ch_zero())

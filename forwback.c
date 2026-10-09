@@ -108,7 +108,7 @@ public lbool entire_file_displayed(void)
 		return (FALSE);
 
 	/* Make sure first line of file is displayed. */
-	pos = position(0);
+	pos = position(TOP);
 	return (pos == NULL_POSITION || pos == 0);
 }
 
@@ -154,7 +154,7 @@ static POSITION forw_line_pfx(POSITION pos, int pfx, int skipeol)
 static void set_attr_header(int ln)
 {
 	set_attr_line(AT_COLOR_HEADER);
-	if (ln+1 == header_lines && position(0) != header_start_pos)
+	if (ln+1 == header_lines && position(TOP) != header_start_pos)
 		set_attr_line(AT_UNDERLINE);
 }
 
@@ -225,6 +225,8 @@ public void forw(int n, POSITION pos, lbool force, lbool only_last, lbool to_new
 	lbool first_line = TRUE;
 	lbool need_home = FALSE;
 
+	if (ABORT_SIGS())
+		return;
 	if (pos != NULL_POSITION)
 		pos = after_header_pos(pos);
 	if (past_eof)
@@ -271,7 +273,8 @@ public void forw(int n, POSITION pos, lbool force, lbool only_last, lbool to_new
 				need_home = TRUE;
 			} else if (!first_time && !is_filtering() && full_screen)
 			{
-				putstr("...skipping...\n");
+				putstr(LM(skipping));
+				putstr("\n");
 			}
 		}
 	}
@@ -391,6 +394,8 @@ public void back(int n, POSITION pos, lbool force, lbool only_last, lbool to_new
 	lbool do_repaint;
 	lbool newline;
 
+	if (ABORT_SIGS())
+		return;
 	squish_check();
 	if (past_eof)
 		force = TRUE;
@@ -401,7 +406,7 @@ public void back(int n, POSITION pos, lbool force, lbool only_last, lbool to_new
 		/*
 		 * Get the previous line of input.
 		 */
-		pos = back_line(pos, &newline);
+		pos = back_line(pos, NULL, &newline);
 		if (to_newline && !newline)
 			++n;
 		if (pos == NULL_POSITION)

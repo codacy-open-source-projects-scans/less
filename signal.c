@@ -78,6 +78,16 @@ static RETSIGTYPE stop(int type)
 }
 #endif
 
+#ifdef SIGALRM
+static RETSIGTYPE sigalarm(int type)
+{
+	(void) type;
+	LSIGNAL(SIGALRM, sigalarm);
+	sigs |= S_TIMER;
+	intio();
+}
+#endif
+
 #undef SIG_LESSWINDOW
 #ifdef SIGWINCH
 #define SIG_LESSWINDOW SIGWINCH
@@ -165,7 +175,7 @@ static RETSIGTYPE sigusr1(int type)
 /*
  * Set up the signal handlers.
  */
-public void init_signals(int on)
+public void init_signals(lbool on)
 {
 	if (on)
 	{
@@ -194,6 +204,9 @@ public void init_signals(int on)
 #endif
 #ifdef SIGHUP
 		(void) LSIGNAL(SIGHUP, terminate);
+#endif
+#ifdef SIGALRM
+		(void) LSIGNAL(SIGALRM, sigalarm);
 #endif
 #ifdef SIGUSR1
 		(void) LSIGNAL(SIGUSR1, sigusr1);
@@ -226,6 +239,9 @@ public void init_signals(int on)
 #ifdef SIGHUP
 		(void) LSIGNAL(SIGHUP, SIG_DFL);
 #endif
+#ifdef SIGALRM
+		(void) LSIGNAL(SIGALRM, SIG_DFL);
+#endif
 #ifdef SIGUSR1
 		(void) LSIGNAL(SIGUSR1, SIG_DFL);
 #endif
@@ -256,7 +272,7 @@ public void psignals(void)
 		clear_bot();
 		term_deinit();
 		flush();
-		raw_mode(0);
+		raw_mode(FALSE);
 #ifdef SIGTTOU
 		LSIGNAL(SIGTTOU, SIG_DFL);
 #endif
@@ -269,7 +285,7 @@ public void psignals(void)
 		 * screen when we get back to the main command loop.
 		 */
 		LSIGNAL(SIGTSTP, stop);
-		raw_mode(1);
+		raw_mode(TRUE);
 		term_init();
 		screen_trashed();
 		tsignals |= S_WINCH;
@@ -284,7 +300,7 @@ public void psignals(void)
 		 */
 		old_width = sc_width;
 		old_height = sc_height;
-		get_term();
+		update_term();
 		if (sc_width != old_width || sc_height != old_height)
 			screen_size_changed();
 		screen_trashed();

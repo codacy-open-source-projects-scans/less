@@ -80,6 +80,7 @@
 #define muldiv(val,num,den) umuldiv((uintmax)(val), (uintmax)(num), (uintmax)(den))
 
 #include "lang.h"
+#include "lmsg.h"
 
 #if defined UINTMAX_MAX
 typedef uintmax_t uintmax;
@@ -133,23 +134,16 @@ void free();
 #undef IS_SPACE
 #undef IS_DIGIT
 
-#if HAVE_WCTYPE
-#define IS_UPPER(c)     iswupper((wint_t) (c))
-#define IS_LOWER(c)     iswlower((wint_t) (c))
-#define TO_UPPER(c)     towupper((wint_t) (c))
-#define TO_LOWER(c)     towlower((wint_t) (c))
-#else
 #if HAVE_UPPER_LOWER
 #define IS_UPPER(c)     (is_ascii_char(c) && isupper((unsigned char) (c)))
 #define IS_LOWER(c)     (is_ascii_char(c) && islower((unsigned char) (c)))
-#define TO_UPPER(c)     (is_ascii_char(c) ? toupper((unsigned char) (c)) : (c))
-#define TO_LOWER(c)     (is_ascii_char(c) ? tolower((unsigned char) (c)) : (c))
+#define TO_UPPER(c)     (is_ascii_char(c) ? (LWCHAR) toupper((unsigned char) (c)) : (LWCHAR) (c))
+#define TO_LOWER(c)     (is_ascii_char(c) ? (LWCHAR) tolower((unsigned char) (c)) : (LWCHAR) (c))
 #else
 #define IS_UPPER(c)     (is_ascii_char(c) && ASCII_IS_UPPER(c))
 #define IS_LOWER(c)     (is_ascii_char(c) && ASCII_IS_LOWER(c))
-#define TO_UPPER(c)     (is_ascii_char(c) ? ASCII_TO_UPPER(c) : (c))
-#define TO_LOWER(c)     (is_ascii_char(c) ? ASCII_TO_LOWER(c) : (c))
-#endif
+#define TO_UPPER(c)     (is_ascii_char(c) ? (LWCHAR) ASCII_TO_UPPER(c) : (LWCHAR) (c))
+#define TO_LOWER(c)     (is_ascii_char(c) ? (LWCHAR) ASCII_TO_LOWER(c) : (LWCHAR) (c))
 #endif
 
 #ifdef isspace
@@ -353,6 +347,7 @@ typedef short POLL_EVENTS;
 #define READ_ERR        (-1)
 #define READ_INTR       (-2)
 #define READ_AGAIN      (-3)
+#define READ_TIMEOUT    (-4)
 
 /*
  * A fraction is represented by a long n; the fraction is n/NUM_FRAC_DENOM.
@@ -413,11 +408,12 @@ typedef enum osc8_state {
 	OSC_INTRO,    /* Waiting for intro char, usually ']' */
 	OSC_TYPENUM,  /* Reading OS command type */
 	OSC_STRING,   /* Reading OS command string */
-	OSC_END_CSI,  /* Waiting for backslash after the final ESC. */
+	OSC_STRING_CSI, /* Waiting for backslash after the final ESC. */
 	OSC_END,      /* At end */
 
 	OSC8_PARAMS,  /* In the OSC8 parameters */
 	OSC8_URI,     /* In the OSC8 URI */
+	OSC8_URI_CSI, /* Waiting for backslash after the final ESC. */
 	OSC8_NOT,     /* This is not an OSC8 link */
 } osc8_state;
 
@@ -459,7 +455,8 @@ typedef enum osc8_state {
 #define AT_COLOR_SEARCH   (10 << AT_COLOR_SHIFT)
 #define AT_COLOR_TILDE    (11 << AT_COLOR_SHIFT)
 #define AT_COLOR_TARGET   (12 << AT_COLOR_SHIFT)
-#define AT_COLOR_SS_OFFSET 13  /* largest AT_COLOR_* value + 1 */
+#define AT_COLOR_OSC8     (13 << AT_COLOR_SHIFT)
+#define AT_COLOR_SS_OFFSET 14  /* largest AT_COLOR_* value + 1 */
 #define NUM_SEARCH_COLORS  5
 #define AT_NUM_COLORS      (AT_COLOR_SS_OFFSET + NUM_SEARCH_COLORS)
 #define AT_COLOR_SUBSEARCH(i) ((AT_COLOR_SS_OFFSET+(i)-1) << AT_COLOR_SHIFT)
@@ -593,6 +590,7 @@ typedef enum {
 #define S_SWINTERRUPT   (1<<1)
 #define S_STOP          (1<<2)
 #define S_WINCH         (1<<3)
+#define S_TIMER         (1<<4)
 #define ABORT_SIGS()    (sigs & (S_INTERRUPT|S_SWINTERRUPT|S_STOP))
 
 #ifdef EXIT_SUCCESS
@@ -680,6 +678,7 @@ struct mlist;
 struct loption;
 struct hilite_tree;
 struct ansi_state;
+struct lesskey_tables;
 #include "pattern.h"
 #include "xbuf.h"
 #include "funcs.h"
